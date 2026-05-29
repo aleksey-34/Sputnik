@@ -29,6 +29,7 @@ type PromoCode = {
   discount_percent: number;
   user_cashback_percent: number;
   platform_fee_percent: number;
+  required_steps: number;
   active: boolean;
   redeemed_at?: string;
 };
@@ -68,6 +69,7 @@ export default function HomePage() {
   const [bonusPoints, setBonusPoints] = useState(0);
   const [profileComplete, setProfileComplete] = useState(false);
   const [stepsToday, setStepsToday] = useState(0);
+  const [verifiedSteps, setVerifiedSteps] = useState(0);
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [shopPromos, setShopPromos] = useState<PromoCode[]>([]);
   const [showcasePromos, setShowcasePromos] = useState<PromoCode[]>([]);
@@ -109,6 +111,7 @@ export default function HomePage() {
       setProfile(json.profile ?? null);
       setBonusPoints(json.points ?? 0);
       setStepsToday(json.stepsToday ?? 0);
+      setVerifiedSteps(json.verifiedSteps ?? 0);
       setProfileComplete(Boolean(json.profileComplete));
       if (json.profile) {
         setProfileForm(prev => ({
@@ -201,18 +204,21 @@ export default function HomePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ promoCodeId: promoId })
     });
-    const json = res.ok ? await res.json() : null;
-    if (json) {
-      setBonusPoints(json.newBalance ?? bonusPoints);
+    const text = await res.text();
+    let json: Record<string, unknown> | null = null;
+    try { json = JSON.parse(text); } catch { /* plain text error */ }
+
+    if (res.ok && json) {
+      setBonusPoints(Number(json.newBalance ?? bonusPoints));
       setActivationBanner({
-        title: json.title,
-        code: json.code,
-        detail: json.message
+        title: String(json.title),
+        code: String(json.code),
+        detail: String(json.message)
       });
-      setStatus(json.message);
+      setStatus(String(json.message));
       fetchProfile(); fetchRedeemed(); fetchPromos();
     } else {
-      setStatus(`Ошибка: ${await res.text()}`);
+      setStatus(String(json?.message ?? text));
     }
   };
 
@@ -242,6 +248,10 @@ export default function HomePage() {
 
   const promoCard = (code: PromoCode, mode: "shop" | "showcase") => {
     const isRedeemed = redeemedIds.has(code.id);
+    const needsSteps = code.required_steps > 0;
+    const stepsOk = verifiedSteps >= code.required_steps;
+    const progress = needsSteps ? Math.min(100, Math.round((verifiedSteps / code.required_steps) * 100)) : 100;
+
     return (
       <div key={code.id} className={`rounded-3xl border p-4 ${isRedeemed ? "border-green-300 bg-green-50" : "border-slate-200 bg-white"}`}>
         <div className="flex items-start justify-between gap-3">
@@ -249,16 +259,28 @@ export default function HomePage() {
             <p className="font-semibold">{code.title}</p>
             {code.partner_name && <p className="text-sm text-primary">Партнёр: {code.partner_name}</p>}
             <p className="text-sm text-slate-500">{code.description}</p>
-            {mode === "showcase" && code.discount_percent > 0 && (
+            {mode === "showcase" && code.user_cashback_percent > 0 && (
               <p className="mt-1 text-sm font-medium text-slate-700">
-                Скидка {code.discount_percent}% · ваш кешбэк {code.user_cashback_percent}%
+                Скидка для вас: {code.user_cashback_percent}%
               </p>
+            )}
+            {needsSteps && !isRedeemed && (
+              <div className="mt-2">
+                <p className="text-xs text-slate-500">
+                  Шаги (Google Fit): {formatSteps(verifiedSteps)} / {formatSteps(code.required_steps)}
+                </p>
+                <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-200">
+                  <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+                </div>
+              </div>
             )}
           </div>
           {isRedeemed ? (
             <span className="rounded-full bg-green-200 px-3 py-1 text-xs font-medium text-green-900">✓ Активировано</span>
           ) : code.cost_points > 0 ? (
             <span className="rounded-full bg-slate-100 px-3 py-1 text-sm">{code.cost_points} бонусов</span>
+          ) : needsSteps ? (
+            <span className="rounded-full bg-blue-100 px-3 py-1 text-xs text-blue-800">за шаги</span>
           ) : null}
         </div>
         {isRedeemed ? (
@@ -266,10 +288,14 @@ export default function HomePage() {
         ) : (
           <button
             className="mt-4 w-full rounded-2xl bg-primary px-4 py-2 text-white disabled:opacity-50"
-            disabled={!code.active || bonusPoints < code.cost_points}
+            disabled={!code.active || bonusPoints < code.cost_points || (needsSteps && !stepsOk)}
             onClick={() => redeemPromo(code.id)}
           >
-            {code.cost_points > 0 ? `Активировать за ${code.cost_points} бонусов` : "Получить"}
+            {needsSteps && !stepsOk
+              ? `Ещё ${formatSteps(code.required_steps - verifiedSteps)} шагов`
+              : code.cost_points > 0
+                ? `Активировать за ${code.cost_points} бонусов`
+                : "Получить скидку"}
           </button>
         )}
       </div>
@@ -346,6 +372,7 @@ export default function HomePage() {
               <>
                 <p className="text-sm text-slate-500">Сегодня</p>
                 <p className="text-3xl font-bold text-primary">{formatSteps(stepsToday)} шагов</p>
+                <p className="text-xs text-slate-400">Верифицировано (Google Fit): {formatSteps(verifiedSteps)}</p>
                 {lastSync && <p className="mt-1 text-xs text-slate-400">Синхр.: {new Date(lastSync.at).toLocaleString("ru-RU")}</p>}
                 <div className="mt-4 space-y-3">
                   <select value={syncPeriod} onChange={e => setSyncPeriod(e.target.value as typeof syncPeriod)} className="w-full rounded-2xl border px-3 py-2 text-sm">
@@ -402,7 +429,7 @@ export default function HomePage() {
 
       {tab === "showcase" && (
         <div className="space-y-4">
-          <p className="text-sm text-slate-600">Партнёрские акции, квесты и спецпредложения</p>
+          <p className="text-sm text-slate-600">Партнёрские акции открываются за верифицированные шаги (Google Fit)</p>
           {showcasePromos.length === 0 ? <p className="text-slate-500">Скоро появятся акции</p> : showcasePromos.map(p => promoCard(p, "showcase"))}
         </div>
       )}

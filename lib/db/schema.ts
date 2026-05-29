@@ -52,6 +52,7 @@ export const promo_codes = pgTable("promo_codes", {
   discount_percent: integer("discount_percent").notNull().default(0),
   user_cashback_percent: integer("user_cashback_percent").notNull().default(0),
   platform_fee_percent: integer("platform_fee_percent").notNull().default(0),
+  required_steps: integer("required_steps").notNull().default(0),
   active: boolean("active").notNull().default(true),
   expires_at: timestamp("expires_at")
 });

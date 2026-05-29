@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
   const { code, title, description, cost_points, reward_points, expires_at, kind, partner_name,
-    discount_percent, user_cashback_percent, platform_fee_percent } = body;
+    required_steps, discount_percent, user_cashback_percent, platform_fee_percent } = body;
   if (!code || !title) {
     return new NextResponse("Поля code и title обязательны", { status: 400 });
   }
@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
     partner_name,
     cost_points: Number(cost_points ?? 0),
     reward_points: Number(reward_points ?? 0),
+    required_steps: Number(required_steps ?? 0),
     discount_percent: Number(discount_percent ?? 0),
     user_cashback_percent: Number(user_cashback_percent ?? 0),
     platform_fee_percent: Number(platform_fee_percent ?? 0),

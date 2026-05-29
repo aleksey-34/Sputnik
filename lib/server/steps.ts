@@ -11,6 +11,22 @@ export async function getStepsPerBonus() {
   return Number(await getSetting("steps_per_bonus", "1000"));
 }
 
+/** Сумма шагов из Google Fit (верифицированные, для порогов акций) */
+export async function getVerifiedSteps(userId: number) {
+  const result = await db.execute<{ total: number }>(
+    sql`SELECT COALESCE(SUM(step_count), 0) AS total FROM steps WHERE user_id = ${userId} AND source = 'google-fit'`
+  );
+  return Number(result[0]?.total ?? 0);
+}
+
+/** Все шаги (все источники, для отображения) */
+export async function getTotalSteps(userId: number) {
+  const result = await db.execute<{ total: number }>(
+    sql`SELECT COALESCE(SUM(step_count), 0) AS total FROM steps WHERE user_id = ${userId}`
+  );
+  return Number(result[0]?.total ?? 0);
+}
+
 /** Сохраняет шаги за день и начисляет бонусы без двойного начисления */
 export async function upsertDailySteps(params: {
   userId: number;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProfileWithBonuses } from "@/lib/server/auth";
+import { getTotalSteps, getVerifiedSteps } from "@/lib/server/steps";
 import { db } from "@/lib/drizzle";
 import { users } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
@@ -25,10 +26,12 @@ export async function GET(request: NextRequest) {
     sql`SELECT COALESCE(SUM(step_count), 0) AS total FROM steps WHERE user_id = ${profile.id} AND date = ${date}`
   );
   const stepsToday = Number(stepResult[0]?.total ?? 0);
+  const totalSteps = await getTotalSteps(profile.id);
+  const verifiedSteps = await getVerifiedSteps(profile.id);
 
   const profileComplete = Boolean(profile.gender && profile.height_cm && profile.weight_kg && profile.birth_year);
 
-  return NextResponse.json({ profile, points, stepsToday, profileComplete });
+  return NextResponse.json({ profile, points, stepsToday, totalSteps, verifiedSteps, profileComplete });
 }
 
 export async function POST(request: NextRequest) {

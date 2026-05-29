@@ -24,6 +24,7 @@ type Promo = {
   discount_percent: number;
   user_cashback_percent: number;
   platform_fee_percent: number;
+  required_steps: number;
   active: boolean;
   redemptions_count?: number;
 };
@@ -53,7 +54,7 @@ export default function AdminPage() {
   const [status, setStatus] = useState("");
   const [newPromo, setNewPromo] = useState({
     code: "", title: "", description: "", kind: "partner",
-    partner_name: "", cost_points: 0, reward_points: 0,
+    partner_name: "", cost_points: 0, reward_points: 0, required_steps: 20000,
     discount_percent: 15, user_cashback_percent: 10, platform_fee_percent: 5
   });
 
@@ -130,7 +131,8 @@ export default function AdminPage() {
       setStatus("Промокод создан");
       setNewPromo({
         code: "", title: "", description: "", kind: "partner", partner_name: "",
-        cost_points: 0, reward_points: 0, discount_percent: 15, user_cashback_percent: 10, platform_fee_percent: 5
+        cost_points: 0, reward_points: 0, required_steps: 20000,
+        discount_percent: 15, user_cashback_percent: 10, platform_fee_percent: 5
       });
       loadTab("promos");
     }
@@ -291,11 +293,12 @@ export default function AdminPage() {
               <input placeholder="Описание" value={newPromo.description} onChange={e => setNewPromo(p => ({ ...p, description: e.target.value }))} className="rounded-2xl border px-3 py-2 md:col-span-2" />
               <input type="number" placeholder="Цена в бонусах" value={newPromo.cost_points} onChange={e => setNewPromo(p => ({ ...p, cost_points: Number(e.target.value) }))} className="rounded-2xl border px-3 py-2" />
               <input type="number" placeholder="Награда бонусами (магазин)" value={newPromo.reward_points} onChange={e => setNewPromo(p => ({ ...p, reward_points: Number(e.target.value) }))} className="rounded-2xl border px-3 py-2" />
-              <input type="number" placeholder="Скидка партнёра %" value={newPromo.discount_percent} onChange={e => setNewPromo(p => ({ ...p, discount_percent: Number(e.target.value) }))} className="rounded-2xl border px-3 py-2" />
-              <input type="number" placeholder="Кешбэк юзеру %" value={newPromo.user_cashback_percent} onChange={e => setNewPromo(p => ({ ...p, user_cashback_percent: Number(e.target.value) }))} className="rounded-2xl border px-3 py-2" />
+              <input type="number" placeholder="Порог шагов (Google Fit)" value={newPromo.required_steps} onChange={e => setNewPromo(p => ({ ...p, required_steps: Number(e.target.value) }))} className="rounded-2xl border px-3 py-2" />
+              <input type="number" placeholder="Маржа партнёра всего %" value={newPromo.discount_percent} onChange={e => setNewPromo(p => ({ ...p, discount_percent: Number(e.target.value) }))} className="rounded-2xl border px-3 py-2" />
+              <input type="number" placeholder="Скидка клиенту %" value={newPromo.user_cashback_percent} onChange={e => setNewPromo(p => ({ ...p, user_cashback_percent: Number(e.target.value) }))} className="rounded-2xl border px-3 py-2" />
               <input type="number" placeholder="Доля платформы %" value={newPromo.platform_fee_percent} onChange={e => setNewPromo(p => ({ ...p, platform_fee_percent: Number(e.target.value) }))} className="rounded-2xl border px-3 py-2" />
             </div>
-            <p className="mt-2 text-xs text-slate-400">Скидка = кешбэк юзеру + доля платформы (напр. 15 = 10 + 5)</p>
+            <p className="mt-2 text-xs text-slate-400">Партнёр: маржа = скидка клиенту + платформа (15 = 10 + 5). Порог шагов — только Google Fit.</p>
             <button className="mt-4 rounded-2xl bg-primary px-4 py-2 text-white" onClick={createPromo}>Создать</button>
           </div>
           <div className="space-y-3">
@@ -309,7 +312,9 @@ export default function AdminPage() {
                       <p className="text-sm text-slate-500">Цена: {p.cost_points} бонусов → награда: {p.reward_points}</p>
                     ) : p.discount_percent > 0 ? (
                       <p className="text-sm text-slate-500">
-                        Скидка {p.discount_percent}% = юзер {p.user_cashback_percent}% + платформа {p.platform_fee_percent}% · цена {p.cost_points} бонусов
+                        Скидка {p.user_cashback_percent}% · маржа {p.discount_percent}% (платформа {p.platform_fee_percent}%)
+                        {p.required_steps > 0 ? ` · порог ${p.required_steps.toLocaleString("ru-RU")} шагов` : ""}
+                        {p.cost_points > 0 ? ` · цена ${p.cost_points} бонусов` : ""}
                       </p>
                     ) : (
                       <p className="text-sm text-slate-500">Цена: {p.cost_points} бонусов</p>
