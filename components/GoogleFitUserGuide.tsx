@@ -50,7 +50,6 @@ export function GoogleFitUserGuide() {
             <li>Пройдите 50–100 шагов — приложение начнёт считать</li>
             <li>
               <strong>iPhone:</strong> откройте Google Fit → убедитесь, что шаги отображаются внутри приложения
-              (Apple Health напрямую из Telegram не подключается — только через Google Fit)
             </li>
           </ol>
         </div>
@@ -59,22 +58,18 @@ export function GoogleFitUserGuide() {
           <p className="mb-2 font-semibold text-slate-900">Шаг 2 — в «Спутнике»</p>
           <ol className="list-decimal space-y-1 pl-5">
             <li>Нажмите «Подключить Google Fit» → выберите тот же Google-аккаунт</li>
+            <li>Если Google пишет «не проверено» → <strong>Дополнительные настройки</strong> → <strong>Перейти в Спутник</strong></li>
             <li>Разрешите доступ к данным о физической активности</li>
-            <li>После подключения шаги за сегодня синхронизируются автоматически</li>
           </ol>
         </div>
 
         <div>
-          <p className="mb-2 font-semibold text-slate-900">Шаг 3 — регулярная синхронизация</p>
+          <p className="mb-2 font-semibold text-slate-900">Шаг 3 — синхронизация</p>
           <ol className="list-decimal space-y-1 pl-5">
-            <li>Выберите период (сегодня / 7 / 30 дней)</li>
-            <li>Нажмите «Синхронизировать шаги» — данные подтянутся из Google Fit</li>
+            <li>Нажмите «Синхронизировать шаги» — подтянутся шаги <strong>только за сегодня</strong></li>
+            <li>Бонусы начисляются с даты регистрации в приложении</li>
           </ol>
         </div>
-
-        <p className="rounded-xl bg-white p-3 text-xs text-slate-600">
-          Нет Google Fit? Используйте «Ручной ввод» — введите шаги за сегодня вручную.
-        </p>
       </div>
     </details>
   );

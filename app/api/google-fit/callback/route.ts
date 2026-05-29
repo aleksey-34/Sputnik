@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { appPublicUrl } from "@/lib/server/auth";
 import { exchangeGoogleCode, saveGoogleConnection, syncGoogleFitForUser } from "@/lib/server/google-fit";
 import { db } from "@/lib/drizzle";
 import { users } from "@/lib/db/schema";
@@ -7,7 +8,7 @@ import { eq } from "drizzle-orm";
 export async function GET(request: NextRequest) {
   const error = request.nextUrl.searchParams.get("error");
   if (error) {
-    const url = new URL("/", request.url);
+    const url = new URL("/", appPublicUrl());
     url.searchParams.set("google", "error");
     url.searchParams.set("google_error", error);
     return NextResponse.redirect(url.toString());
@@ -28,23 +29,29 @@ export async function GET(request: NextRequest) {
     return new NextResponse("Пользователь не найден", { status: 404 });
   }
 
-  const tokenResponse = await exchangeGoogleCode(code);
-  const accessToken = tokenResponse.access_token;
-  if (!accessToken) {
-    return new NextResponse("Не удалось получить access token", { status: 500 });
-  }
-
-  await saveGoogleConnection(user.id, tokenResponse);
-
-  // После подключения — автосинхронизация шагов за сегодня
   try {
-    await syncGoogleFitForUser(telegramId, "today");
-  } catch {
-    // OAuth прошёл, синхронизацию можно повторить вручную
-  }
+    const tokenResponse = await exchangeGoogleCode(code);
+    const accessToken = tokenResponse.access_token;
+    if (!accessToken) {
+      return new NextResponse("Не удалось получить access token", { status: 500 });
+    }
 
-  const url = new URL("/", request.url);
-  url.searchParams.set("google", "connected");
-  url.searchParams.set("autosync", "1");
-  return NextResponse.redirect(url.toString());
+    await saveGoogleConnection(user.id, tokenResponse);
+
+    try {
+      await syncGoogleFitForUser(telegramId);
+    } catch {
+      // OAuth прошёл, синхронизацию можно повторить вручную
+    }
+
+    const url = new URL("/", appPublicUrl());
+    url.searchParams.set("google", "connected");
+    url.searchParams.set("autosync", "1");
+    return NextResponse.redirect(url.toString());
+  } catch (e) {
+    const url = new URL("/", appPublicUrl());
+    url.searchParams.set("google", "error");
+    url.searchParams.set("google_error", e instanceof Error ? e.message : "oauth_failed");
+    return NextResponse.redirect(url.toString());
+  }
 }

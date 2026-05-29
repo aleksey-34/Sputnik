@@ -1,10 +1,17 @@
 import { db } from "@/lib/drizzle";
 import { google_fit_connections, step_sync_logs, users } from "@/lib/db/schema";
-import { periodDateRange, toDateStr, upsertDailySteps } from "@/lib/server/steps";
+import { registrationDateStr } from "@/lib/server/auth";
+import { toDateStr, upsertDailySteps } from "@/lib/server/steps";
 import { eq, sql } from "drizzle-orm";
 
 const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const GOOGLE_FIT_AGGREGATE = "https://fitness.googleapis.com/fitness/v1/users/me/dataset:aggregate";
+
+const STEP_SOURCES = [
+  "derived:com.google.step_count.delta:com.google.android.gms:estimated_steps",
+  "derived:com.google.step_count.delta:com.google.android.gms:merged",
+  "derived:com.google.step_count.delta:com.google.ios.fit:fitness_tracker"
+];
 
 type TokenResponse = {
   access_token: string;
@@ -36,7 +43,8 @@ export async function exchangeGoogleCode(code: string): Promise<TokenResponse> {
   });
 
   if (!response.ok) {
-    throw new Error("Не удалось обменять код Google OAuth");
+    const err = await response.text();
+    throw new Error(`Не удалось обменять код Google OAuth: ${err}`);
   }
 
   return response.json();
@@ -105,10 +113,31 @@ export async function getValidGoogleAccessToken(userId: number) {
   return refreshed.access_token;
 }
 
-/** Получает шаги по дням из Google Fit за период */
-export async function fetchGoogleStepsByDay(accessToken: string, start: Date, end: Date) {
+function parseBuckets(data: { bucket?: unknown[] }) {
+  const byDate = new Map<string, number>();
+
+  for (const bucket of data.bucket ?? []) {
+    const b = bucket as { startTimeMillis?: string | number; dataset?: { point?: { value?: { intVal?: number }[] }[] }[] };
+    const startMs = Number(b.startTimeMillis ?? 0);
+    const date = toDateStr(new Date(startMs));
+    const points = b.dataset?.[0]?.point ?? [];
+    const stepsCount = points.reduce((sum, point) => sum + (point.value?.[0]?.intVal ?? 0), 0);
+    if (stepsCount > 0) {
+      byDate.set(date, Math.max(byDate.get(date) ?? 0, stepsCount));
+    }
+  }
+
+  return byDate;
+}
+
+async function aggregateSteps(
+  accessToken: string,
+  start: Date,
+  end: Date,
+  aggregateBy: { dataTypeName: string; dataSourceId?: string }[]
+) {
   const requestBody = {
-    aggregateBy: [{ dataTypeName: "com.google.step_count.delta" }],
+    aggregateBy,
     bucketByTime: { durationMillis: 86400000 },
     startTimeMillis: start.getTime(),
     endTimeMillis: end.getTime()
@@ -128,25 +157,50 @@ export async function fetchGoogleStepsByDay(accessToken: string, start: Date, en
     throw new Error(`Google Fit API: ${err}`);
   }
 
-  const data = await resp.json();
-  const daily: { date: string; steps: number }[] = [];
+  return parseBuckets(await resp.json());
+}
 
-  for (const bucket of data.bucket ?? []) {
-    const startMs = Number(bucket.startTimeMillis ?? 0);
-    const date = toDateStr(new Date(startMs));
-    const points = bucket.dataset?.[0]?.point ?? [];
-    const stepsCount = points.reduce((sum: number, point: { value?: { intVal?: number }[] }) => {
-      return sum + (point.value?.[0]?.intVal ?? 0);
-    }, 0);
-    if (stepsCount > 0) {
-      daily.push({ date, steps: stepsCount });
+/** Получает шаги по дням из Google Fit за период */
+export async function fetchGoogleStepsByDay(accessToken: string, start: Date, end: Date) {
+  const merged = new Map<string, number>();
+
+  // Базовый запрос без dataSourceId
+  try {
+    for (const [date, steps] of await aggregateSteps(accessToken, start, end, [
+      { dataTypeName: "com.google.step_count.delta" }
+    ])) {
+      merged.set(date, Math.max(merged.get(date) ?? 0, steps));
+    }
+  } catch {
+    // пробуем другие источники
+  }
+
+  for (const dataSourceId of STEP_SOURCES) {
+    try {
+      for (const [date, steps] of await aggregateSteps(accessToken, start, end, [
+        { dataTypeName: "com.google.step_count.delta", dataSourceId }
+      ])) {
+        merged.set(date, Math.max(merged.get(date) ?? 0, steps));
+      }
+    } catch {
+      // источник может отсутствовать на устройстве
     }
   }
 
-  return daily;
+  return Array.from(merged.entries())
+    .map(([date, steps]) => ({ date, steps }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export async function syncGoogleFitForUser(telegramId: string, period: string) {
+function todayRange() {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+}
+
+export async function syncGoogleFitForUser(telegramId: string) {
   const user = await db.select().from(users).where(eq(users.telegram_id, telegramId)).then(r => r[0]);
   if (!user) throw new Error("Пользователь не найден");
 
@@ -155,7 +209,8 @@ export async function syncGoogleFitForUser(telegramId: string, period: string) {
     throw new Error("GOOGLE_NOT_CONNECTED");
   }
 
-  const { start, end } = periodDateRange(period);
+  const regDate = registrationDateStr(user.created_at);
+  const { start, end } = todayRange();
   const dailySteps = await fetchGoogleStepsByDay(accessToken, start, end);
 
   let totalSteps = 0;
@@ -163,6 +218,8 @@ export async function syncGoogleFitForUser(telegramId: string, period: string) {
   const dayDetails: { date: string; steps: number; bonus: number }[] = [];
 
   for (const day of dailySteps) {
+    if (day.date < regDate) continue;
+
     const result = await upsertDailySteps({
       userId: user.id,
       source: "google-fit",
@@ -177,17 +234,17 @@ export async function syncGoogleFitForUser(telegramId: string, period: string) {
   await db.insert(step_sync_logs).values({
     user_id: user.id,
     source: "google-fit",
-    period,
-    date_from: toDateStr(start),
+    period: "today",
+    date_from: regDate > toDateStr(start) ? regDate : toDateStr(start),
     date_to: toDateStr(end),
-    days_synced: dailySteps.length,
+    days_synced: dayDetails.length,
     steps_synced: totalSteps,
     bonus_awarded: totalBonus,
     status: "success",
-    meta: { dayDetails, provider: "Google Fit" }
+    meta: { dayDetails, provider: "Google Fit", rawDays: dailySteps.length }
   });
 
-  return { totalSteps, totalBonus, daysSynced: dailySteps.length, dayDetails };
+  return { totalSteps, totalBonus, daysSynced: dayDetails.length, dayDetails };
 }
 
 export async function getGoogleFitStatus(telegramId: string) {
@@ -213,26 +270,8 @@ export async function getGoogleFitStatus(telegramId: string) {
   };
 }
 
-/** Legacy: синхронизация только за сегодня после OAuth callback */
-export async function storeGoogleSteps(telegramId: string, totalSteps: number) {
-  const user = await db.select().from(users).where(eq(users.telegram_id, telegramId)).then(r => r[0]);
-  if (!user) throw new Error("Пользователь не найден");
-
-  const date = toDateStr(new Date());
-  const result = await upsertDailySteps({
-    userId: user.id,
-    source: "google-fit",
-    date,
-    stepCount: totalSteps
-  });
-
-  return { totalSteps: result.stored, newPoints: result.newPoints };
-}
-
 export async function getGoogleStepsToday(accessToken: string) {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date();
+  const { start, end } = todayRange();
   const daily = await fetchGoogleStepsByDay(accessToken, start, end);
   return daily.reduce((s, d) => s + d.steps, 0);
 }

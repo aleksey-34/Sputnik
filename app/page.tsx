@@ -75,8 +75,6 @@ export default function HomePage() {
   const [showcasePromos, setShowcasePromos] = useState<PromoCode[]>([]);
   const [redeemed, setRedeemed] = useState<PromoCode[]>([]);
   const [profileForm, setProfileForm] = useState<ProfileForm>({ gender: "", height_cm: "", weight_kg: "", birth_year: "" });
-  const [manualSteps, setManualSteps] = useState("");
-  const [syncPeriod, setSyncPeriod] = useState<"today" | "7d" | "30d">("today");
   const [googleConnected, setGoogleConnected] = useState(false);
   const [googleConfigured, setGoogleConfigured] = useState(true);
   const [lastSync, setLastSync] = useState<{ at: string; steps: number } | null>(null);
@@ -170,7 +168,7 @@ export default function HomePage() {
   }, [fetchSyncStatus, fetchProfile]);
 
   const referralLink = useMemo(() =>
-    profile ? `https://t.me/${BOT_USERNAME}?start=${profile.telegram_id}` : "", [profile]);
+    profile ? `https://t.me/${BOT_USERNAME}?startapp=${profile.telegram_id}` : "", [profile]);
 
   const redeemedIds = useMemo(() => new Set(redeemed.map(r => r.id)), [redeemed]);
 
@@ -192,15 +190,15 @@ export default function HomePage() {
 
   const syncSteps = async () => {
     setStatus("Синхронизируем...");
-    const res = await fetch("/api/steps/sync", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ period: syncPeriod })
-    });
+    const res = await fetch("/api/steps/sync", { method: "POST" });
     if (res.status === 428) { setStatus("Сначала подключите Google Fit"); return; }
     if (res.ok) {
       const json = await res.json();
-      setStatus(`Синхронизировано ${formatSteps(json.totalSteps)} шагов${json.totalBonus > 0 ? `, +${json.totalBonus} бонусов` : ""}`);
+      if (json.totalSteps === 0) {
+        setStatus("Синхронизация прошла, но шагов за сегодня в Google Fit пока нет. Пройдите 50–100 шагов и повторите.");
+      } else {
+        setStatus(`Синхронизировано ${formatSteps(json.totalSteps)} шагов${json.totalBonus > 0 ? `, +${json.totalBonus} бонусов` : ""}`);
+      }
       fetchProfile(); fetchSyncStatus();
     } else setStatus(await res.text());
   };
@@ -371,32 +369,17 @@ export default function HomePage() {
                 <p className="text-3xl font-bold text-primary">{formatSteps(stepsToday)} шагов</p>
                 <p className="text-xs text-slate-400">Верифицировано (Google Fit): {formatSteps(verifiedSteps)}</p>
                 {lastSync && <p className="mt-1 text-xs text-slate-400">Синхр.: {new Date(lastSync.at).toLocaleString("ru-RU")}</p>}
-                <div className="mt-4 space-y-3">
-                  <select value={syncPeriod} onChange={e => setSyncPeriod(e.target.value as typeof syncPeriod)} className="w-full rounded-2xl border px-3 py-2 text-sm">
-                    <option value="today">Сегодня</option>
-                    <option value="7d">7 дней</option>
-                    <option value="30d">30 дней</option>
-                  </select>
-                  <button className="w-full rounded-2xl bg-slate-900 py-2 text-white" onClick={syncSteps}>Синхронизировать шаги</button>
-                </div>
+                <p className="mt-2 text-xs text-slate-500">Считаются только шаги за сегодня, с даты регистрации в приложении.</p>
+                <button className="mt-4 w-full rounded-2xl bg-slate-900 py-2 text-white" onClick={syncSteps}>Синхронизировать шаги</button>
                 <GoogleFitUserGuide />
               </>
             )}
-            <details className="mt-4">
-              <summary className="cursor-pointer text-sm text-slate-500">Ручной ввод</summary>
-              <div className="mt-2 flex gap-2">
-                <input type="number" value={manualSteps} onChange={e => setManualSteps(e.target.value)} className="flex-1 rounded-2xl border px-3 py-2" placeholder="Шаги" />
-                <button className="rounded-2xl border px-4" onClick={async () => {
-                  const res = await fetch("/api/steps", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source: "manual", stepCount: Number(manualSteps) || 0 }) });
-                  if (res.ok) { setManualSteps(""); fetchProfile(); setStatus("Шаги сохранены"); }
-                }}>OK</button>
-              </div>
-            </details>
           </section>
 
           <section className="rounded-3xl border bg-white p-5">
             <h2 className="mb-2 font-semibold">Реферальная ссылка</h2>
-            <p className="mb-2 text-sm text-slate-600">+{appConfig?.referralBonus ?? 25} бонусов за друга</p>
+            <p className="mb-2 text-sm text-slate-600">+{appConfig?.referralBonus ?? 10} бонусов за друга</p>
+            <p className="mb-2 text-xs text-slate-400">Друг должен открыть ссылку — так приложение получит реферальный код</p>
             <div className="break-all rounded-2xl bg-slate-100 p-3 text-xs">{referralLink || "—"}</div>
             {referralLink && <button className="mt-2 text-sm text-primary underline" onClick={() => navigator.clipboard.writeText(referralLink)}>Копировать</button>}
           </section>

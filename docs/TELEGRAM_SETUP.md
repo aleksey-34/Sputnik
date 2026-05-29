@@ -77,14 +77,14 @@ Mini App **обязательно** работает по HTTPS.
 
 ## Шаг 5. Реферальная система
 
-Реферальная ссылка формируется автоматически:
+Реферальная ссылка (важно: `startapp`, не `start`):
 ```
-https://t.me/YOUR_BOT_USERNAME?start=TELEGRAM_USER_ID
+https://t.me/YOUR_BOT_USERNAME?startapp=TELEGRAM_USER_ID
 ```
 
 Когда новый пользователь переходит по ссылке и открывает Mini App:
 - Telegram передаёт `start_param` в initData
-- При первой регистрации пригласившему начисляется **25 бонусов**
+- Пригласившему начисляются бонусы (см. настройки `referral_bonus`)
 
 ---
 

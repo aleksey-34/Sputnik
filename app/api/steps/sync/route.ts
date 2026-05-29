@@ -26,15 +26,8 @@ export async function POST(request: NextRequest) {
     return new NextResponse("Пользователь не аутентифицирован", { status: 401 });
   }
 
-  const body = await request.json();
-  const period = String(body.period ?? "today");
-
-  if (!["today", "7d", "30d"].includes(period)) {
-    return new NextResponse("Неверный период. Допустимо: today, 7d, 30d", { status: 400 });
-  }
-
   try {
-    const result = await syncGoogleFitForUser(telegramId, period);
+    const result = await syncGoogleFitForUser(telegramId);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
