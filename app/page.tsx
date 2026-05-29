@@ -160,6 +160,13 @@ export default function HomePage() {
         : "Google Fit подключён!");
       window.history.replaceState({}, "", "/");
     }
+    if (params.get("google") === "error") {
+      const err = params.get("google_error");
+      setStatus(err === "access_denied"
+        ? "Google Fit: доступ не разрешён. Если видите «приложение не проверено» — нажмите «Дополнительные настройки» → «Перейти в Спутник»."
+        : `Google Fit: ошибка подключения (${err ?? "unknown"})`);
+      window.history.replaceState({}, "", "/");
+    }
   }, [fetchSyncStatus, fetchProfile]);
 
   const referralLink = useMemo(() =>

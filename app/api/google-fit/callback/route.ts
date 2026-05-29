@@ -5,6 +5,14 @@ import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
+  const error = request.nextUrl.searchParams.get("error");
+  if (error) {
+    const url = new URL("/", request.url);
+    url.searchParams.set("google", "error");
+    url.searchParams.set("google_error", error);
+    return NextResponse.redirect(url.toString());
+  }
+
   const code = request.nextUrl.searchParams.get("code");
   if (!code) {
     return new NextResponse("Код авторизации не найден", { status: 400 });
