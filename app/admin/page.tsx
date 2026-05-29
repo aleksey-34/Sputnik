@@ -37,6 +37,7 @@ type Promo = {
   description?: string;
   kind: string;
   partner_name?: string;
+  partner_pin?: string;
   cost_points: number;
   reward_points: number;
   discount_percent: number;
@@ -58,11 +59,11 @@ type SyncLog = {
   status: string;
 };
 
-type Tab = "dashboard" | "users" | "promos" | "logs" | "settings";
+type Tab = "dashboard" | "users" | "promos" | "settlements" | "logs" | "settings";
 
 const EMPTY_PROMO: PromoForm = {
   code: "", title: "", description: "", kind: "partner",
-  partner_name: "", cost_points: 20, reward_points: 0,
+  partner_name: "", partner_pin: "", cost_points: 20, reward_points: 0,
   discount_percent: 15, user_cashback_percent: 10, platform_fee_percent: 5
 };
 
@@ -94,6 +95,11 @@ export default function AdminPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [promos, setPromos] = useState<Promo[]>([]);
   const [logs, setLogs] = useState<SyncLog[]>([]);
+  const [settlements, setSettlements] = useState<Array<{
+    id: number; partner_name: string; user_name: string; user_discount_percent: number;
+    platform_fee_percent: number; total_margin_percent: number; cost_points: number;
+    status: string; confirmed_at: string;
+  }>>([]);
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [status, setStatus] = useState("");
   const [newPromo, setNewPromo] = useState<PromoForm>(EMPTY_PROMO);
@@ -165,6 +171,10 @@ export default function AdminPage() {
     if (t === "promos") {
       const res = await fetch("/api/admin/promocodes");
       if (res.ok) setPromos(await res.json());
+    }
+    if (t === "settlements") {
+      const res = await fetch("/api/admin/settlements");
+      if (res.ok) setSettlements(await res.json());
     }
     if (t === "logs") {
       const res = await fetch("/api/admin/sync-logs");
@@ -262,7 +272,10 @@ export default function AdminPage() {
       <Field label="Партнёр" hint="Название салона, магазина и т.д. (для партнёрских акций)">
         <input value={form.partner_name ?? ""} onChange={e => setForm(p => ({ ...p, partner_name: e.target.value }))} className={inputCls()} />
       </Field>
-      <Field label="Код" hint="Промокод, который показывается пользователю и партнёру">
+      <Field label="PIN партнёра" hint="Для страницы /partner — сотрудник вводит PIN и сканирует QR клиента">
+        <input value={form.partner_pin ?? ""} onChange={e => setForm(p => ({ ...p, partner_pin: e.target.value }))} className={inputCls()} />
+      </Field>
+      <Field label="Код для партнёра / юзера" hint="Внутренний код акции (не QR)">
         <input value={form.code} onChange={e => setForm(p => ({ ...p, code: e.target.value }))} className={inputCls()} />
       </Field>
       <Field label="Название">
@@ -320,6 +333,7 @@ export default function AdminPage() {
     { id: "dashboard", label: "Дашборд" },
     { id: "users", label: "Клиенты" },
     { id: "promos", label: "Акции" },
+    { id: "settlements", label: "Партнёры" },
     { id: "logs", label: "Синхронизации" },
     { id: "settings", label: "Настройки" }
   ];
@@ -581,6 +595,41 @@ export default function AdminPage() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {tab === "settlements" && (
+        <div className="overflow-x-auto rounded-3xl border bg-white">
+          <p className="border-b p-4 text-sm text-slate-500">
+            Подтверждённые ваучеры: долг партнёра = скидка клиенту + комиссия платформы (% от чека — учёт позже)
+          </p>
+          <table className="w-full text-left text-sm">
+            <thead className="border-b bg-slate-50">
+              <tr>
+                <th className="p-3">Дата</th>
+                <th className="p-3">Партнёр</th>
+                <th className="p-3">Клиент</th>
+                <th className="p-3">Скидка</th>
+                <th className="p-3">Платформа</th>
+                <th className="p-3">Бонусов</th>
+                <th className="p-3">Статус</th>
+              </tr>
+            </thead>
+            <tbody>
+              {settlements.map(s => (
+                <tr key={s.id} className="border-b">
+                  <td className="p-3 whitespace-nowrap">{new Date(s.confirmed_at).toLocaleString("ru-RU")}</td>
+                  <td className="p-3">{s.partner_name}</td>
+                  <td className="p-3">{s.user_name}</td>
+                  <td className="p-3">{s.user_discount_percent}%</td>
+                  <td className="p-3">{s.platform_fee_percent}%</td>
+                  <td className="p-3">{s.cost_points}</td>
+                  <td className="p-3">{s.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {settlements.length === 0 && <p className="p-6 text-center text-slate-400">Пока нет подтверждённых визитов</p>}
         </div>
       )}
 

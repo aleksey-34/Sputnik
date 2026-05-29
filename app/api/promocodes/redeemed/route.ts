@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/drizzle";
 import { promo_codes, promo_redemptions, users } from "@/lib/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import { partnerVoucherUrl } from "@/lib/server/voucher";
 
 function getTelegramId(request: NextRequest) {
   return request.cookies.get("sputnik_telegram_id")?.value ?? null;
@@ -18,25 +19,24 @@ export async function GET(request: NextRequest) {
     return new NextResponse("Пользователь не найден", { status: 404 });
   }
 
-  const redemptions = await db.select({
-    promo_code_id: promo_redemptions.promo_code_id,
-    redeemed_at: promo_redemptions.redeemed_at
-  }).from(promo_redemptions).where(eq(promo_redemptions.user_id, user.id));
+  const rows = await db.select({
+    promo: promo_codes,
+    redemption: promo_redemptions
+  })
+    .from(promo_redemptions)
+    .innerJoin(promo_codes, eq(promo_redemptions.promo_code_id, promo_codes.id))
+    .where(eq(promo_redemptions.user_id, user.id));
 
-  if (redemptions.length === 0) {
-    return NextResponse.json([]);
-  }
-
-  const ids = redemptions.map(r => r.promo_code_id);
-  const promos = await db.select().from(promo_codes).where(inArray(promo_codes.id, ids));
-
-  const result = promos.map(p => {
-    const r = redemptions.find(x => x.promo_code_id === p.id);
-    return {
-      ...p,
-      redeemed_at: r?.redeemed_at
-    };
-  });
+  const result = rows.map(({ promo, redemption }) => ({
+    ...promo,
+    redeemed_at: redemption.redeemed_at,
+    voucher_token: redemption.voucher_token,
+    voucher_url: redemption.voucher_token ? partnerVoucherUrl(redemption.voucher_token) : null,
+    status: redemption.status,
+    used_at: redemption.used_at,
+    expires_at: redemption.expires_at,
+    user_discount_percent: redemption.user_discount_snapshot || promo.user_cashback_percent
+  }));
 
   return NextResponse.json(result);
 }

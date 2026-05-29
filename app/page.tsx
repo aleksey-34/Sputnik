@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GoogleFitUserGuide } from "@/components/GoogleFitUserGuide";
+import { PartnerVoucherCard } from "@/components/PartnerVoucherCard";
 
 type Tab = "user" | "shop" | "showcase";
 
@@ -32,7 +33,25 @@ type PromoCode = {
   required_steps: number;
   active: boolean;
   redeemed_at?: string;
+  voucher_token?: string;
+  voucher_url?: string;
+  status?: string;
+  used_at?: string;
+  expires_at?: string;
+  user_discount_percent?: number;
 };
+
+type VoucherBanner = {
+  title: string;
+  partnerName?: string;
+  discountPercent: number;
+  voucherUrl: string;
+  status: string;
+  expiresAt?: string;
+  detail: string;
+};
+
+type ConfirmPromo = { promoCodeId: number; title: string; cost_points: number; user_discount_percent: number; partner_name?: string; message: string };
 
 type AppConfig = {
   stepsPerBonus: number;
@@ -79,6 +98,8 @@ export default function HomePage() {
   const [googleConfigured, setGoogleConfigured] = useState(true);
   const [lastSync, setLastSync] = useState<{ at: string; steps: number } | null>(null);
   const [status, setStatus] = useState("");
+  const [voucherBanner, setVoucherBanner] = useState<VoucherBanner | null>(null);
+  const [confirmPromo, setConfirmPromo] = useState<ConfirmPromo | null>(null);
   const [activationBanner, setActivationBanner] = useState<{ title: string; code: string; detail: string } | null>(null);
   const [isTelegram, setIsTelegram] = useState(false);
 
@@ -203,23 +224,60 @@ export default function HomePage() {
     } else setStatus(await res.text());
   };
 
-  const redeemPromo = async (promoId: number) => {
+  const redeemPromo = async (promoId: number, confirmed = false) => {
     const res = await fetch("/api/promocodes/redeem", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ promoCodeId: promoId })
+      body: JSON.stringify({ promoCodeId: promoId, confirmed })
     });
     const text = await res.text();
     let json: Record<string, unknown> | null = null;
     try { json = JSON.parse(text); } catch { /* plain text error */ }
 
-    if (res.ok && json) {
-      setBonusPoints(Number(json.newBalance ?? bonusPoints));
-      setActivationBanner({
+    if (json?.needsConfirmation) {
+      setConfirmPromo({
+        promoCodeId: promoId,
         title: String(json.title),
-        code: String(json.code),
-        detail: String(json.message)
+        cost_points: Number(json.cost_points),
+        user_discount_percent: Number(json.user_discount_percent),
+        partner_name: json.partner_name ? String(json.partner_name) : undefined,
+        message: String(json.message)
       });
+      return;
+    }
+
+    if (res.ok && json) {
+      setConfirmPromo(null);
+      setBonusPoints(Number(json.newBalance ?? bonusPoints));
+
+      if (json.voucher_url && json.kind !== "bonus_shop") {
+        setVoucherBanner({
+          title: String(json.title),
+          partnerName: json.partner_name ? String(json.partner_name) : undefined,
+          discountPercent: Number(json.user_discount_percent ?? 0),
+          voucherUrl: String(json.voucher_url),
+          status: String(json.status ?? "active"),
+          expiresAt: json.expires_at ? String(json.expires_at) : undefined,
+          detail: String(json.message)
+        });
+        setActivationBanner(null);
+      } else if (json.alreadyRedeemed && json.voucher_url) {
+        setVoucherBanner({
+          title: String(json.title),
+          partnerName: json.partner_name ? String(json.partner_name) : undefined,
+          discountPercent: Number(json.user_discount_percent ?? 0),
+          voucherUrl: String(json.voucher_url),
+          status: String(json.status ?? "active"),
+          detail: String(json.message)
+        });
+      } else {
+        setActivationBanner({
+          title: String(json.title),
+          code: String(json.code ?? ""),
+          detail: String(json.message)
+        });
+      }
+
       setStatus(String(json.message));
       fetchProfile(); fetchRedeemed(); fetchPromos();
     } else {
@@ -279,7 +337,21 @@ export default function HomePage() {
           )}
         </div>
         {isRedeemed ? (
-          <div className="mt-3 rounded-2xl bg-white p-3 font-mono text-sm">{code.code}</div>
+          code.voucher_url && code.status !== "used" ? (
+            <button className="mt-4 w-full rounded-2xl border border-primary py-2 text-sm text-primary" onClick={() => setVoucherBanner({
+              title: code.title,
+              partnerName: code.partner_name,
+              discountPercent: code.user_discount_percent ?? code.user_cashback_percent,
+              voucherUrl: code.voucher_url!,
+              status: code.status ?? "active",
+              expiresAt: code.expires_at,
+              detail: "Покажите QR сотруднику"
+            })}>
+              {code.status === "used" ? "Использовано" : "Показать QR"}
+            </button>
+          ) : (
+            <div className="mt-3 rounded-2xl bg-white p-3 font-mono text-sm">{code.code}</div>
+          )
         ) : (
           <button
             className="mt-4 w-full rounded-2xl bg-primary px-4 py-2 text-white disabled:opacity-50"
@@ -288,9 +360,11 @@ export default function HomePage() {
           >
             {!canAfford && code.cost_points > 0
               ? `Нужно ещё ${code.cost_points - bonusPoints} бонусов`
-              : code.cost_points > 0
+              : code.kind === "partner" || code.kind === "quest"
                 ? `Активировать за ${code.cost_points} бонусов`
-                : "Получить бесплатно"}
+                : code.cost_points > 0
+                  ? `Активировать за ${code.cost_points} бонусов`
+                  : "Получить бесплатно"}
           </button>
         )}
       </div>
@@ -313,7 +387,38 @@ export default function HomePage() {
         )}
       </header>
 
-      {activationBanner && (
+      {confirmPromo && (
+        <div className="mb-4 rounded-3xl border-2 border-amber-300 bg-amber-50 p-5">
+          <p className="font-semibold">{confirmPromo.title}</p>
+          <p className="mt-2 text-sm">{confirmPromo.message}</p>
+          <div className="mt-4 flex gap-2">
+            <button
+              className="flex-1 rounded-2xl bg-primary py-2 text-white"
+              onClick={() => redeemPromo(confirmPromo.promoCodeId, true)}
+            >
+              Подтвердить (−{confirmPromo.cost_points} бон.)
+            </button>
+            <button className="rounded-2xl border px-4 py-2" onClick={() => setConfirmPromo(null)}>Отмена</button>
+          </div>
+        </div>
+      )}
+
+      {voucherBanner && (
+        <div className="mb-4">
+          <PartnerVoucherCard
+            title={voucherBanner.title}
+            partnerName={voucherBanner.partnerName}
+            discountPercent={voucherBanner.discountPercent}
+            voucherUrl={voucherBanner.voucherUrl}
+            status={voucherBanner.status}
+            expiresAt={voucherBanner.expiresAt}
+            onClose={() => setVoucherBanner(null)}
+          />
+          <p className="mt-2 text-sm text-slate-600">{voucherBanner.detail}</p>
+        </div>
+      )}
+
+      {activationBanner && !voucherBanner && (
         <div className="mb-4 rounded-3xl border-2 border-green-400 bg-green-50 p-5">
           <p className="font-semibold text-green-900">🎉 {activationBanner.title}</p>
           <p className="mt-2 font-mono text-lg">{activationBanner.code}</p>
@@ -386,12 +491,33 @@ export default function HomePage() {
 
           {redeemed.length > 0 && (
             <section className="rounded-3xl border bg-white p-5">
-              <h2 className="mb-3 font-semibold">Мои активированные коды</h2>
+              <h2 className="mb-3 font-semibold">Мои акции и коды</h2>
               <div className="space-y-2">
                 {redeemed.map(r => (
                   <div key={r.id} className="rounded-2xl bg-green-50 p-3">
                     <p className="font-medium">{r.title}</p>
-                    <p className="font-mono text-sm">{r.code}</p>
+                    {r.voucher_url ? (
+                      <>
+                        <p className="text-sm text-slate-600">
+                          {r.status === "used" ? "✓ Использовано у партнёра" : `Скидка ${r.user_discount_percent}% · покажите QR`}
+                        </p>
+                        {r.status !== "used" && (
+                          <button className="mt-2 text-sm text-primary underline" onClick={() => setVoucherBanner({
+                            title: r.title,
+                            partnerName: r.partner_name,
+                            discountPercent: r.user_discount_percent ?? r.user_cashback_percent,
+                            voucherUrl: r.voucher_url!,
+                            status: r.status ?? "active",
+                            expiresAt: r.expires_at,
+                            detail: ""
+                          })}>
+                            Открыть QR
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <p className="font-mono text-sm">{r.code}</p>
+                    )}
                   </div>
                 ))}
               </div>

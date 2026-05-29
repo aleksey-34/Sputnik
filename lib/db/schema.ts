@@ -47,6 +47,7 @@ export const promo_codes = pgTable("promo_codes", {
   description: text("description"),
   kind: varchar("kind", { length: 32 }).notNull().default("bonus_shop"),
   partner_name: varchar("partner_name", { length: 128 }),
+  partner_pin: varchar("partner_pin", { length: 32 }),
   cost_points: integer("cost_points").notNull().default(0),
   reward_points: integer("reward_points").notNull().default(0),
   discount_percent: integer("discount_percent").notNull().default(0),
@@ -61,10 +62,34 @@ export const promo_redemptions = pgTable("promo_redemptions", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull().references(() => users.id),
   promo_code_id: integer("promo_code_id").notNull().references(() => promo_codes.id),
+  voucher_token: varchar("voucher_token", { length: 64 }).unique(),
+  status: varchar("status", { length: 16 }).notNull().default("active"),
+  used_at: timestamp("used_at"),
+  expires_at: timestamp("expires_at"),
+  cost_points_snapshot: integer("cost_points_snapshot").notNull().default(0),
+  user_discount_snapshot: integer("user_discount_snapshot").notNull().default(0),
+  platform_fee_snapshot: integer("platform_fee_snapshot").notNull().default(0),
+  partner_name_snapshot: varchar("partner_name_snapshot", { length: 128 }),
   redeemed_at: timestamp("redeemed_at").defaultNow().notNull()
 }, table => ({
   unique_redemption: uniqueIndex("unique_redemption").on(table.user_id, table.promo_code_id)
 }));
+
+/** Учёт использованных партнёрских ваучеров (долг партнёра перед платформой) */
+export const partner_settlements = pgTable("partner_settlements", {
+  id: serial("id").primaryKey(),
+  redemption_id: integer("redemption_id").notNull().references(() => promo_redemptions.id).unique(),
+  promo_code_id: integer("promo_code_id").notNull().references(() => promo_codes.id),
+  partner_name: varchar("partner_name", { length: 128 }).notNull(),
+  user_name: varchar("user_name", { length: 128 }).notNull(),
+  cost_points: integer("cost_points").notNull().default(0),
+  user_discount_percent: integer("user_discount_percent").notNull().default(0),
+  platform_fee_percent: integer("platform_fee_percent").notNull().default(0),
+  total_margin_percent: integer("total_margin_percent").notNull().default(0),
+  status: varchar("status", { length: 16 }).notNull().default("pending"),
+  confirmed_at: timestamp("confirmed_at").defaultNow().notNull(),
+  meta: jsonb("meta")
+});
 
 export const referrals = pgTable("referrals", {
   id: serial("id").primaryKey(),

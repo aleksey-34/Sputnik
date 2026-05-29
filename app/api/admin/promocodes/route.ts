@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { code, title, description, kind, partner_name, cost_points, reward_points,
+  const { code, title, description, kind, partner_name, partner_pin, cost_points, reward_points,
     discount_percent, user_cashback_percent, platform_fee_percent, active } = body;
 
   if (!code || !title) {
@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
     description,
     kind: kind ?? "bonus_shop",
     partner_name: partner_name || null,
+    partner_pin: partner_pin || null,
     cost_points: Number(cost_points ?? 0),
     reward_points: Number(reward_points ?? 0),
     required_steps: 0,
@@ -92,7 +93,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const updates: Record<string, unknown> = {};
-  for (const key of ["code", "title", "description", "kind", "partner_name", "active"] as const) {
+  for (const key of ["code", "title", "description", "kind", "partner_name", "partner_pin", "active"] as const) {
     if (body[key] !== undefined) updates[key] = body[key];
   }
   for (const key of ["cost_points", "reward_points", "discount_percent", "user_cashback_percent", "platform_fee_percent"] as const) {
