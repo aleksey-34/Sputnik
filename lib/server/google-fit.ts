@@ -1,11 +1,18 @@
 import { db } from "@/lib/drizzle";
-import { bonus_transactions, steps, users } from "@/lib/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { google_fit_connections, step_sync_logs, users } from "@/lib/db/schema";
+import { periodDateRange, toDateStr, upsertDailySteps } from "@/lib/server/steps";
+import { eq, sql } from "drizzle-orm";
 
 const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const GOOGLE_FIT_AGGREGATE = "https://fitness.googleapis.com/fitness/v1/users/me/dataset:aggregate";
 
-export async function exchangeGoogleCode(code: string) {
+type TokenResponse = {
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+};
+
+export async function exchangeGoogleCode(code: string): Promise<TokenResponse> {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   const redirectUri = process.env.GOOGLE_REDIRECT_URL;
@@ -35,17 +42,76 @@ export async function exchangeGoogleCode(code: string) {
   return response.json();
 }
 
-export async function getGoogleSteps(accessToken: string) {
-  const endMs = Date.now();
-  const startMs = new Date(new Date().setHours(0, 0, 0, 0)).valueOf();
+export async function saveGoogleConnection(userId: number, tokens: TokenResponse) {
+  const expiresAt = tokens.expires_in
+    ? new Date(Date.now() + tokens.expires_in * 1000)
+    : null;
 
+  const existing = await db.select().from(google_fit_connections)
+    .where(eq(google_fit_connections.user_id, userId)).then(r => r[0]);
+
+  if (existing) {
+    await db.update(google_fit_connections).set({
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token ?? existing.refresh_token,
+      expires_at: expiresAt,
+      updated_at: sql`now()`
+    }).where(eq(google_fit_connections.user_id, userId));
+  } else {
+    await db.insert(google_fit_connections).values({
+      user_id: userId,
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_at: expiresAt
+    });
+  }
+}
+
+async function refreshGoogleToken(refreshToken: string): Promise<TokenResponse> {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error("Google OAuth не настроен");
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    refresh_token: refreshToken,
+    grant_type: "refresh_token"
+  });
+
+  const response = await fetch(GOOGLE_TOKEN_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString()
+  });
+
+  if (!response.ok) throw new Error("Не удалось обновить Google token");
+  return response.json();
+}
+
+export async function getValidGoogleAccessToken(userId: number) {
+  const conn = await db.select().from(google_fit_connections)
+    .where(eq(google_fit_connections.user_id, userId)).then(r => r[0]);
+
+  if (!conn) return null;
+
+  const expired = conn.expires_at && conn.expires_at.getTime() < Date.now() + 60_000;
+  if (!expired) return conn.access_token;
+
+  if (!conn.refresh_token) return null;
+
+  const refreshed = await refreshGoogleToken(conn.refresh_token);
+  await saveGoogleConnection(userId, { ...refreshed, refresh_token: conn.refresh_token });
+  return refreshed.access_token;
+}
+
+/** Получает шаги по дням из Google Fit за период */
+export async function fetchGoogleStepsByDay(accessToken: string, start: Date, end: Date) {
   const requestBody = {
-    aggregateBy: [{
-      dataTypeName: "com.google.step_count.delta"
-    }],
+    aggregateBy: [{ dataTypeName: "com.google.step_count.delta" }],
     bucketByTime: { durationMillis: 86400000 },
-    startTimeMillis: startMs,
-    endTimeMillis: endMs
+    startTimeMillis: start.getTime(),
+    endTimeMillis: end.getTime()
   };
 
   const resp = await fetch(GOOGLE_FIT_AGGREGATE, {
@@ -58,56 +124,115 @@ export async function getGoogleSteps(accessToken: string) {
   });
 
   if (!resp.ok) {
-    throw new Error("Ошибка получения данных Google Fit");
+    const err = await resp.text();
+    throw new Error(`Google Fit API: ${err}`);
   }
 
   const data = await resp.json();
-  const bucket = data.bucket?.[0];
-  const totalSteps = bucket?.dataset?.[0]?.point?.reduce((sum: number, point: any) => {
-    const value = point.value?.[0]?.intVal ?? 0;
-    return sum + value;
-  }, 0) ?? 0;
+  const daily: { date: string; steps: number }[] = [];
 
-  return totalSteps;
+  for (const bucket of data.bucket ?? []) {
+    const startMs = Number(bucket.startTimeMillis ?? 0);
+    const date = toDateStr(new Date(startMs));
+    const points = bucket.dataset?.[0]?.point ?? [];
+    const stepsCount = points.reduce((sum: number, point: { value?: { intVal?: number }[] }) => {
+      return sum + (point.value?.[0]?.intVal ?? 0);
+    }, 0);
+    if (stepsCount > 0) {
+      daily.push({ date, steps: stepsCount });
+    }
+  }
+
+  return daily;
 }
 
-export async function storeGoogleSteps(telegramId: string, totalSteps: number) {
-  const user = await db.select().from(users).where(eq(users.telegram_id, telegramId)).then(rows => rows[0]);
+export async function syncGoogleFitForUser(telegramId: string, period: string) {
+  const user = await db.select().from(users).where(eq(users.telegram_id, telegramId)).then(r => r[0]);
   if (!user) throw new Error("Пользователь не найден");
 
-  const date = new Date().toISOString().slice(0, 10);
-  const source = "google-fit";
-  const existing = await db.select().from(steps).where(and(eq(steps.user_id, user.id), eq(steps.date, date), eq(steps.source, source))).then(rows => rows[0]);
-
-  if (existing && existing.step_count >= totalSteps) {
-    return { totalSteps, newPoints: 0 };
+  const accessToken = await getValidGoogleAccessToken(user.id);
+  if (!accessToken) {
+    throw new Error("GOOGLE_NOT_CONNECTED");
   }
 
-  if (existing) {
-    await db.update(steps).set({ step_count: totalSteps, recorded_at: sql`now()` }).where(eq(steps.id, existing.id));
-  } else {
-    await db.insert(steps).values({ user_id: user.id, source, date, step_count: totalSteps });
-  }
+  const { start, end } = periodDateRange(period);
+  const dailySteps = await fetchGoogleStepsByDay(accessToken, start, end);
 
-  const totals = await db.execute(sql`SELECT COALESCE(SUM(step_count), 0) AS total FROM steps WHERE user_id = ${user.id} AND date = ${date}`);
-  const totalDay = Number(totals[0]?.total ?? 0);
-  const alreadyPoints = await db.select({ points: sql`coalesce(sum(points), 0)` })
-    .from(bonus_transactions)
-    .where(and(eq(bonus_transactions.user_id, user.id), eq(bonus_transactions.type, "step"), sql`created_at::date = ${date}`));
+  let totalSteps = 0;
+  let totalBonus = 0;
+  const dayDetails: { date: string; steps: number; bonus: number }[] = [];
 
-  const currentAwarded = Number(alreadyPoints[0]?.points ?? 0);
-  const targetPoints = Math.floor(totalDay / 1000);
-  const newPoints = Math.max(0, targetPoints - currentAwarded);
-
-  if (newPoints > 0) {
-    await db.insert(bonus_transactions).values({
-      user_id: user.id,
-      points: newPoints,
-      type: "step",
+  for (const day of dailySteps) {
+    const result = await upsertDailySteps({
+      userId: user.id,
       source: "google-fit",
-      meta: { totalDay }
+      date: day.date,
+      stepCount: day.steps
     });
+    totalSteps += day.steps;
+    totalBonus += result.newPoints;
+    dayDetails.push({ date: day.date, steps: day.steps, bonus: result.newPoints });
   }
 
-  return { totalSteps: totalDay, newPoints };
+  await db.insert(step_sync_logs).values({
+    user_id: user.id,
+    source: "google-fit",
+    period,
+    date_from: toDateStr(start),
+    date_to: toDateStr(end),
+    days_synced: dailySteps.length,
+    steps_synced: totalSteps,
+    bonus_awarded: totalBonus,
+    status: "success",
+    meta: { dayDetails, provider: "Google Fit" }
+  });
+
+  return { totalSteps, totalBonus, daysSynced: dailySteps.length, dayDetails };
+}
+
+export async function getGoogleFitStatus(telegramId: string) {
+  const user = await db.select().from(users).where(eq(users.telegram_id, telegramId)).then(r => r[0]);
+  if (!user) return { connected: false, lastSync: null };
+
+  const conn = await db.select().from(google_fit_connections)
+    .where(eq(google_fit_connections.user_id, user.id)).then(r => r[0]);
+
+  const lastSync = await db.select().from(step_sync_logs)
+    .where(eq(step_sync_logs.user_id, user.id))
+    .orderBy(sql`${step_sync_logs.created_at} DESC`)
+    .limit(1).then(r => r[0]);
+
+  return {
+    connected: Boolean(conn),
+    lastSync: lastSync ? {
+      at: lastSync.created_at,
+      period: lastSync.period,
+      steps: lastSync.steps_synced,
+      bonus: lastSync.bonus_awarded
+    } : null
+  };
+}
+
+/** Legacy: синхронизация только за сегодня после OAuth callback */
+export async function storeGoogleSteps(telegramId: string, totalSteps: number) {
+  const user = await db.select().from(users).where(eq(users.telegram_id, telegramId)).then(r => r[0]);
+  if (!user) throw new Error("Пользователь не найден");
+
+  const date = toDateStr(new Date());
+  const result = await upsertDailySteps({
+    userId: user.id,
+    source: "google-fit",
+    date,
+    stepCount: totalSteps
+  });
+
+  return { totalSteps: result.stored, newPoints: result.newPoints };
+}
+
+export async function getGoogleStepsToday(accessToken: string) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date();
+  const daily = await fetchGoogleStepsByDay(accessToken, start, end);
+  return daily.reduce((s, d) => s + d.steps, 0);
 }

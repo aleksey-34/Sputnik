@@ -1,0 +1,41 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getGoogleFitStatus, syncGoogleFitForUser } from "@/lib/server/google-fit";
+
+function getTelegramId(request: NextRequest) {
+  return request.cookies.get("sputnik_telegram_id")?.value ?? null;
+}
+
+export async function GET(request: NextRequest) {
+  const telegramId = getTelegramId(request);
+  if (!telegramId) {
+    return new NextResponse("Пользователь не аутентифицирован", { status: 401 });
+  }
+
+  const status = await getGoogleFitStatus(telegramId);
+  return NextResponse.json(status);
+}
+
+export async function POST(request: NextRequest) {
+  const telegramId = getTelegramId(request);
+  if (!telegramId) {
+    return new NextResponse("Пользователь не аутентифицирован", { status: 401 });
+  }
+
+  const body = await request.json();
+  const period = String(body.period ?? "today");
+
+  if (!["today", "7d", "30d"].includes(period)) {
+    return new NextResponse("Неверный период. Допустимо: today, 7d, 30d", { status: 400 });
+  }
+
+  try {
+    const result = await syncGoogleFitForUser(telegramId, period);
+    return NextResponse.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === "GOOGLE_NOT_CONNECTED") {
+      return NextResponse.json({ error: "GOOGLE_NOT_CONNECTED", message: "Сначала подключите Google Fit" }, { status: 428 });
+    }
+    return new NextResponse(message, { status: 500 });
+  }
+}

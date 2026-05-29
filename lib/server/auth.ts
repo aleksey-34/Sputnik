@@ -1,6 +1,7 @@
 import { db } from "@/lib/drizzle";
 import { bonus_transactions, referrals, users } from "@/lib/db/schema";
-import { and, eq, sql } from "drizzle-orm";
+import { getSetting } from "@/lib/server/steps";
+import { eq, sql } from "drizzle-orm";
 
 export async function createOrUpdateUser(payload: {
   telegram_id: string;
@@ -39,10 +40,11 @@ export async function createOrUpdateUser(payload: {
   if (payload.start_param && newUserId) {
     const inviter = await db.select().from(users).where(eq(users.telegram_id, payload.start_param)).limit(1).then(rows => rows[0]);
     if (inviter && inviter.id !== newUserId) {
+      const referralBonus = Number(await getSetting("referral_bonus", "25"));
       await db.insert(referrals).values({ inviter_id: inviter.id, invitee_id: newUserId, reward_given: true });
       await db.insert(bonus_transactions).values({
         user_id: inviter.id,
-        points: 25,
+        points: referralBonus,
         type: "referral",
         source: "referral",
         meta: { invitee_id: newUserId }

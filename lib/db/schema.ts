@@ -67,3 +67,36 @@ export const referrals = pgTable("referrals", {
   created_at: timestamp("created_at").defaultNow().notNull(),
   reward_given: boolean("reward_given").notNull().default(true)
 });
+
+/** OAuth-токены Google Fit для повторной синхронизации без повторного входа */
+export const google_fit_connections = pgTable("google_fit_connections", {
+  id: serial("id").primaryKey(),
+  user_id: integer("user_id").notNull().references(() => users.id).unique(),
+  access_token: text("access_token").notNull(),
+  refresh_token: text("refresh_token"),
+  expires_at: timestamp("expires_at"),
+  updated_at: timestamp("updated_at").defaultNow().notNull()
+});
+
+/** Журнал синхронизаций — пруф для админки и пользователя */
+export const step_sync_logs = pgTable("step_sync_logs", {
+  id: serial("id").primaryKey(),
+  user_id: integer("user_id").notNull().references(() => users.id),
+  source: varchar("source", { length: 32 }).notNull(),
+  period: varchar("period", { length: 16 }).notNull(),
+  date_from: varchar("date_from", { length: 10 }).notNull(),
+  date_to: varchar("date_to", { length: 10 }).notNull(),
+  days_synced: integer("days_synced").notNull().default(0),
+  steps_synced: integer("steps_synced").notNull().default(0),
+  bonus_awarded: integer("bonus_awarded").notNull().default(0),
+  status: varchar("status", { length: 16 }).notNull().default("success"),
+  meta: jsonb("meta"),
+  created_at: timestamp("created_at").defaultNow().notNull()
+});
+
+/** Глобальные настройки приложения (бонусы, рефералы и т.д.) */
+export const app_settings = pgTable("app_settings", {
+  key: varchar("key", { length: 64 }).primaryKey(),
+  value: text("value").notNull(),
+  updated_at: timestamp("updated_at").defaultNow().notNull()
+});

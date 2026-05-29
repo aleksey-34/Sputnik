@@ -64,6 +64,18 @@ export default function HomePage() {
     birth_year: 1995
   });
   const [isTelegram, setIsTelegram] = useState(false);
+  const [syncPeriod, setSyncPeriod] = useState<"today" | "7d" | "30d">("today");
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [lastSync, setLastSync] = useState<{ at: string; period: string; steps: number; bonus: number } | null>(null);
+
+  const fetchSyncStatus = useCallback(async () => {
+    const res = await fetch("/api/steps/sync");
+    if (res.ok) {
+      const json = await res.json();
+      setGoogleConnected(Boolean(json.connected));
+      setLastSync(json.lastSync ?? null);
+    }
+  }, []);
 
   const fetchProfile = useCallback(async () => {
     const res = await fetch("/api/profile");
@@ -126,7 +138,18 @@ export default function HomePage() {
       loginWithTelegram();
     }
     fetchPromoCodes();
-  }, [fetchPromoCodes, loginWithTelegram]);
+    fetchSyncStatus();
+  }, [fetchPromoCodes, loginWithTelegram, fetchSyncStatus]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("google") === "connected") {
+      setStatus("Google Fit подключён! Теперь можно синхронизировать шаги.");
+      window.history.replaceState({}, "", "/");
+      fetchSyncStatus();
+    }
+  }, [fetchSyncStatus]);
 
   const referralLink = useMemo(() => {
     if (!profile) return "";
@@ -168,6 +191,32 @@ export default function HomePage() {
 
   const connectGoogleFit = () => {
     window.location.href = "/api/google-fit/auth";
+  };
+
+  const syncStepsFromPhone = async () => {
+    setStatus("Синхронизируем шаги со смартфона через Google Fit...");
+    const res = await fetch("/api/steps/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ period: syncPeriod })
+    });
+
+    if (res.status === 428) {
+      setStatus("Сначала подключите Google Fit — это привяжет шаги с вашего Android-телефона.");
+      return;
+    }
+
+    if (res.ok) {
+      const json = await res.json();
+      setStatus(
+        `Синхронизировано: ${formatSteps(json.totalSteps)} шагов за ${json.daysSynced} дн. ` +
+        (json.totalBonus > 0 ? `+${json.totalBonus} бонусов` : "")
+      );
+      fetchProfile();
+      fetchSyncStatus();
+    } else {
+      setStatus(`Ошибка синхронизации: ${await res.text()}`);
+    }
   };
 
   const redeemPromo = async (codeId: number) => {
@@ -353,26 +402,65 @@ export default function HomePage() {
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="mb-4 text-xl font-semibold">Трекер шагов</h2>
             <p className="text-slate-600">Сегодня вы прошли:</p>
-            <p className="mb-4 text-4xl font-semibold text-primary">{formatSteps(stepsToday)} шагов</p>
+            <p className="mb-2 text-4xl font-semibold text-primary">{formatSteps(stepsToday)} шагов</p>
             <p className="mb-4 text-sm text-slate-500">1 бонус за каждые 1000 шагов</p>
-            <button className="mr-3 rounded-2xl bg-primary px-4 py-2 text-white" onClick={connectGoogleFit}>
-              Подключить Google Fit
-            </button>
-            <div className="mt-6 space-y-3">
-              <label className="block space-y-1 text-sm text-slate-700">
-                Ввести шаги вручную
-                <input
-                  type="number"
-                  min={0}
-                  value={manualSteps}
-                  onChange={e => setManualSteps(Number(e.target.value))}
+
+            <div className="mb-4 rounded-2xl bg-slate-50 p-4">
+              <h3 className="mb-2 font-medium">Синхронизация со смартфона</h3>
+              <p className="mb-3 text-sm text-slate-600">
+                Через Google Fit (Android). Шаги подтягиваются автоматически с телефона — каждая синхронизация сохраняется в журнале как пруф.
+              </p>
+              {googleConnected ? (
+                <p className="mb-3 text-sm text-green-700">Google Fit подключён</p>
+              ) : (
+                <button className="mb-3 rounded-2xl bg-primary px-4 py-2 text-white" onClick={connectGoogleFit}>
+                  1. Подключить Google Fit
+                </button>
+              )}
+              <label className="mb-3 block space-y-1 text-sm text-slate-700">
+                Период синхронизации
+                <select
+                  value={syncPeriod}
+                  onChange={e => setSyncPeriod(e.target.value as "today" | "7d" | "30d")}
                   className="w-full rounded-2xl border px-3 py-2"
-                />
+                >
+                  <option value="today">Сегодня</option>
+                  <option value="7d">Последние 7 дней</option>
+                  <option value="30d">Последние 30 дней</option>
+                </select>
               </label>
-              <button className="rounded-2xl bg-slate-900 px-4 py-2 text-white" onClick={sendManualSteps}>
-                Отправить
+              <button
+                className="w-full rounded-2xl bg-slate-900 px-4 py-2 text-white disabled:opacity-50"
+                onClick={syncStepsFromPhone}
+                disabled={!googleConnected}
+              >
+                2. Синхронизировать шаги
               </button>
+              {lastSync && (
+                <p className="mt-3 text-xs text-slate-500">
+                  Последняя синхронизация: {new Date(lastSync.at).toLocaleString("ru-RU")} — {formatSteps(lastSync.steps)} шагов
+                </p>
+              )}
             </div>
+
+            <details className="mt-4">
+              <summary className="cursor-pointer text-sm text-slate-600">Ручной ввод (если нет Google Fit)</summary>
+              <div className="mt-3 space-y-3">
+                <label className="block space-y-1 text-sm text-slate-700">
+                  Шаги за сегодня
+                  <input
+                    type="number"
+                    min={0}
+                    value={manualSteps}
+                    onChange={e => setManualSteps(Number(e.target.value))}
+                    className="w-full rounded-2xl border px-3 py-2"
+                  />
+                </label>
+                <button className="rounded-2xl border border-slate-300 px-4 py-2" onClick={sendManualSteps}>
+                  Отправить вручную
+                </button>
+              </div>
+            </details>
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
