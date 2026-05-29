@@ -45,8 +45,13 @@ export const promo_codes = pgTable("promo_codes", {
   code: varchar("code", { length: 64 }).notNull().unique(),
   title: varchar("title", { length: 128 }).notNull(),
   description: text("description"),
+  kind: varchar("kind", { length: 32 }).notNull().default("bonus_shop"),
+  partner_name: varchar("partner_name", { length: 128 }),
   cost_points: integer("cost_points").notNull().default(0),
   reward_points: integer("reward_points").notNull().default(0),
+  discount_percent: integer("discount_percent").notNull().default(0),
+  user_cashback_percent: integer("user_cashback_percent").notNull().default(0),
+  platform_fee_percent: integer("platform_fee_percent").notNull().default(0),
   active: boolean("active").notNull().default(true),
   expires_at: timestamp("expires_at")
 });

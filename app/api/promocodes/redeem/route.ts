@@ -25,12 +25,19 @@ export async function POST(request: NextRequest) {
     return new NextResponse("Промокод не найден или недоступен", { status: 404 });
   }
 
-  const already = await db.select().from(promo_redemptions).where(and(eq(promo_redemptions.user_id, user.id), eq(promo_redemptions.promo_code_id, promo.id))).then(rows => rows[0]);
+  const already = await db.select().from(promo_redemptions)
+    .where(and(eq(promo_redemptions.user_id, user.id), eq(promo_redemptions.promo_code_id, promo.id)))
+    .then(rows => rows[0]);
   if (already) {
-    return new NextResponse("Промокод уже активирован", { status: 409 });
+    return NextResponse.json({
+      alreadyRedeemed: true,
+      code: promo.code,
+      title: promo.title,
+      message: "Промокод уже был активирован ранее"
+    });
   }
 
-  const balanceResult = await db.select({ points: sql`coalesce(sum(points), 0)` })
+  const balanceResult = await db.select({ points: sql<number>`coalesce(sum(points), 0)` })
     .from(bonus_transactions)
     .where(eq(bonus_transactions.user_id, user.id));
   const balance = Number(balanceResult[0]?.points ?? 0);
@@ -40,22 +47,46 @@ export async function POST(request: NextRequest) {
   }
 
   await db.insert(promo_redemptions).values({ user_id: user.id, promo_code_id: promo.id });
-  await db.insert(bonus_transactions).values({
-    user_id: user.id,
-    points: -promo.cost_points,
-    type: "promo_redemption",
-    source: promo.code,
-    meta: { promoId: promo.id }
-  });
+
+  if (promo.cost_points > 0) {
+    await db.insert(bonus_transactions).values({
+      user_id: user.id,
+      points: -promo.cost_points,
+      type: "promo_redemption",
+      source: promo.code,
+      meta: { promoId: promo.id, kind: promo.kind }
+    });
+  }
+
+  let rewardGranted = 0;
   if (promo.reward_points > 0) {
+    rewardGranted = promo.reward_points;
     await db.insert(bonus_transactions).values({
       user_id: user.id,
       points: promo.reward_points,
       type: "promo_reward",
       source: promo.code,
-      meta: { promoId: promo.id }
+      meta: { promoId: promo.id, kind: promo.kind }
     });
   }
 
-  return NextResponse.json({ success: true });
+  const newBalanceResult = await db.select({ points: sql<number>`coalesce(sum(points), 0)` })
+    .from(bonus_transactions)
+    .where(eq(bonus_transactions.user_id, user.id));
+
+  return NextResponse.json({
+    success: true,
+    code: promo.code,
+    title: promo.title,
+    kind: promo.kind,
+    partner_name: promo.partner_name,
+    discount_percent: promo.discount_percent,
+    user_cashback_percent: promo.user_cashback_percent,
+    cost_points: promo.cost_points,
+    reward_points: rewardGranted,
+    newBalance: Number(newBalanceResult[0]?.points ?? 0),
+    message: promo.kind === "partner"
+      ? `Активировано! Покажите код ${promo.code} партнёру ${promo.partner_name ?? ""}. Скидка ${promo.discount_percent}%, ваш кешбэк ${promo.user_cashback_percent}%.`
+      : `Активировано! Ваш код: ${promo.code}${rewardGranted > 0 ? `. +${rewardGranted} бонусов` : ""}`
+  });
 }

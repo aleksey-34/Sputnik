@@ -17,9 +17,15 @@ type Promo = {
   code: string;
   title: string;
   description?: string;
+  kind: string;
+  partner_name?: string;
   cost_points: number;
   reward_points: number;
+  discount_percent: number;
+  user_cashback_percent: number;
+  platform_fee_percent: number;
   active: boolean;
+  redemptions_count?: number;
 };
 type SyncLog = {
   id: number;
@@ -45,7 +51,11 @@ export default function AdminPage() {
   const [logs, setLogs] = useState<SyncLog[]>([]);
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [status, setStatus] = useState("");
-  const [newPromo, setNewPromo] = useState({ code: "", title: "", description: "", cost_points: 0, reward_points: 0 });
+  const [newPromo, setNewPromo] = useState({
+    code: "", title: "", description: "", kind: "partner",
+    partner_name: "", cost_points: 0, reward_points: 0,
+    discount_percent: 15, user_cashback_percent: 10, platform_fee_percent: 5
+  });
 
   const checkAuth = useCallback(async () => {
     const res = await fetch("/api/admin/auth");
@@ -118,7 +128,10 @@ export default function AdminPage() {
     });
     if (res.ok) {
       setStatus("Промокод создан");
-      setNewPromo({ code: "", title: "", description: "", cost_points: 0, reward_points: 0 });
+      setNewPromo({
+        code: "", title: "", description: "", kind: "partner", partner_name: "",
+        cost_points: 0, reward_points: 0, discount_percent: 15, user_cashback_percent: 10, platform_fee_percent: 5
+      });
       loadTab("promos");
     }
   };
@@ -262,26 +275,51 @@ export default function AdminPage() {
       {tab === "promos" && (
         <div className="space-y-6">
           <div className="rounded-3xl border bg-white p-6">
-            <h2 className="mb-4 font-semibold">Новая акция</h2>
+            <h2 className="mb-2 font-semibold">Новая акция</h2>
+            <p className="mb-4 text-sm text-slate-500">
+              Магазин (bonus_shop) — обмен бонусов. Партнёр (partner) — скидка % + кешбэк юзеру + доля платформе. Квест (quest) — задания.
+            </p>
             <div className="grid gap-3 md:grid-cols-2">
-              <input placeholder="Код" value={newPromo.code} onChange={e => setNewPromo(p => ({ ...p, code: e.target.value }))} className="rounded-2xl border px-3 py-2" />
-              <input placeholder="Название" value={newPromo.title} onChange={e => setNewPromo(p => ({ ...p, title: e.target.value }))} className="rounded-2xl border px-3 py-2" />
+              <select value={newPromo.kind} onChange={e => setNewPromo(p => ({ ...p, kind: e.target.value }))} className="rounded-2xl border px-3 py-2">
+                <option value="bonus_shop">Магазин бонусов</option>
+                <option value="partner">Партнёрская акция</option>
+                <option value="quest">Квест</option>
+              </select>
+              <input placeholder="Партнёр (название)" value={newPromo.partner_name} onChange={e => setNewPromo(p => ({ ...p, partner_name: e.target.value }))} className="rounded-2xl border px-3 py-2" />
+              <input placeholder="Код для партнёра / юзера" value={newPromo.code} onChange={e => setNewPromo(p => ({ ...p, code: e.target.value }))} className="rounded-2xl border px-3 py-2" />
+              <input placeholder="Название акции" value={newPromo.title} onChange={e => setNewPromo(p => ({ ...p, title: e.target.value }))} className="rounded-2xl border px-3 py-2" />
               <input placeholder="Описание" value={newPromo.description} onChange={e => setNewPromo(p => ({ ...p, description: e.target.value }))} className="rounded-2xl border px-3 py-2 md:col-span-2" />
-              <input type="number" placeholder="Стоимость" value={newPromo.cost_points} onChange={e => setNewPromo(p => ({ ...p, cost_points: Number(e.target.value) }))} className="rounded-2xl border px-3 py-2" />
-              <input type="number" placeholder="Награда" value={newPromo.reward_points} onChange={e => setNewPromo(p => ({ ...p, reward_points: Number(e.target.value) }))} className="rounded-2xl border px-3 py-2" />
+              <input type="number" placeholder="Цена в бонусах" value={newPromo.cost_points} onChange={e => setNewPromo(p => ({ ...p, cost_points: Number(e.target.value) }))} className="rounded-2xl border px-3 py-2" />
+              <input type="number" placeholder="Награда бонусами (магазин)" value={newPromo.reward_points} onChange={e => setNewPromo(p => ({ ...p, reward_points: Number(e.target.value) }))} className="rounded-2xl border px-3 py-2" />
+              <input type="number" placeholder="Скидка партнёра %" value={newPromo.discount_percent} onChange={e => setNewPromo(p => ({ ...p, discount_percent: Number(e.target.value) }))} className="rounded-2xl border px-3 py-2" />
+              <input type="number" placeholder="Кешбэк юзеру %" value={newPromo.user_cashback_percent} onChange={e => setNewPromo(p => ({ ...p, user_cashback_percent: Number(e.target.value) }))} className="rounded-2xl border px-3 py-2" />
+              <input type="number" placeholder="Доля платформы %" value={newPromo.platform_fee_percent} onChange={e => setNewPromo(p => ({ ...p, platform_fee_percent: Number(e.target.value) }))} className="rounded-2xl border px-3 py-2" />
             </div>
+            <p className="mt-2 text-xs text-slate-400">Скидка = кешбэк юзеру + доля платформы (напр. 15 = 10 + 5)</p>
             <button className="mt-4 rounded-2xl bg-primary px-4 py-2 text-white" onClick={createPromo}>Создать</button>
           </div>
           <div className="space-y-3">
             {promos.map(p => (
-              <div key={p.id} className="flex items-center justify-between rounded-3xl border bg-white p-4">
-                <div>
-                  <p className="font-semibold">{p.title} <span className="text-slate-400">({p.code})</span></p>
-                  <p className="text-sm text-slate-500">{p.cost_points} → {p.reward_points} бонусов</p>
+              <div key={p.id} className="rounded-3xl border bg-white p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="font-semibold">{p.title} <span className="font-mono text-slate-400">({p.code})</span></p>
+                    <p className="text-xs uppercase text-primary">{p.kind}{p.partner_name ? ` · ${p.partner_name}` : ""}</p>
+                    {p.kind === "bonus_shop" ? (
+                      <p className="text-sm text-slate-500">Цена: {p.cost_points} бонусов → награда: {p.reward_points}</p>
+                    ) : p.discount_percent > 0 ? (
+                      <p className="text-sm text-slate-500">
+                        Скидка {p.discount_percent}% = юзер {p.user_cashback_percent}% + платформа {p.platform_fee_percent}% · цена {p.cost_points} бонусов
+                      </p>
+                    ) : (
+                      <p className="text-sm text-slate-500">Цена: {p.cost_points} бонусов</p>
+                    )}
+                    <p className="text-xs text-slate-400">Активаций: {p.redemptions_count ?? 0}</p>
+                  </div>
+                  <button className="shrink-0 rounded-2xl border px-3 py-1 text-sm" onClick={() => togglePromo(p)}>
+                    {p.active ? "Выкл" : "Вкл"}
+                  </button>
                 </div>
-                <button className="rounded-2xl border px-3 py-1 text-sm" onClick={() => togglePromo(p)}>
-                  {p.active ? "Выключить" : "Включить"}
-                </button>
               </div>
             ))}
           </div>

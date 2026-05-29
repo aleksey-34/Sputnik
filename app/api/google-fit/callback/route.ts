@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { exchangeGoogleCode, getGoogleStepsToday, saveGoogleConnection, storeGoogleSteps } from "@/lib/server/google-fit";
+import { exchangeGoogleCode, saveGoogleConnection, syncGoogleFitForUser } from "@/lib/server/google-fit";
 import { db } from "@/lib/drizzle";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -27,9 +27,16 @@ export async function GET(request: NextRequest) {
   }
 
   await saveGoogleConnection(user.id, tokenResponse);
-  await storeGoogleSteps(telegramId, await getGoogleStepsToday(accessToken));
+
+  // После подключения — автосинхронизация шагов за сегодня
+  try {
+    await syncGoogleFitForUser(telegramId, "today");
+  } catch {
+    // OAuth прошёл, синхронизацию можно повторить вручную
+  }
 
   const url = new URL("/", request.url);
   url.searchParams.set("google", "connected");
+  url.searchParams.set("autosync", "1");
   return NextResponse.redirect(url.toString());
 }
