@@ -3,6 +3,7 @@ import { isAdminRequest } from "@/lib/server/admin";
 import { db } from "@/lib/drizzle";
 import { app_settings } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
+import { getWelcomeBonus, setWelcomeBonus } from "@/lib/server/settings";
 
 export async function GET(request: NextRequest) {
   if (!isAdminRequest(request)) {
@@ -10,7 +11,13 @@ export async function GET(request: NextRequest) {
   }
 
   const settings = await db.select().from(app_settings);
-  return NextResponse.json(Object.fromEntries(settings.map(s => [s.key, s.value])));
+  const map = Object.fromEntries(settings.map(s => [s.key, s.value]));
+
+  if (!map.welcome_bonus) {
+    map.welcome_bonus = String(await getWelcomeBonus());
+  }
+
+  return NextResponse.json(map);
 }
 
 export async function PUT(request: NextRequest) {
@@ -20,7 +27,12 @@ export async function PUT(request: NextRequest) {
 
   const body = await request.json();
 
+  if (body.welcome_bonus !== undefined) {
+    await setWelcomeBonus(Number(body.welcome_bonus));
+  }
+
   for (const [key, value] of Object.entries(body)) {
+    if (key === "welcome_bonus") continue;
     await db.insert(app_settings).values({ key, value: String(value) })
       .onConflictDoUpdate({
         target: app_settings.key,
