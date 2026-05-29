@@ -28,9 +28,9 @@ type PromoCode = {
 
 type ProfileForm = {
   gender: string;
-  height_cm: number;
-  weight_kg: number;
-  birth_year: number;
+  height_cm: string;
+  weight_kg: string;
+  birth_year: string;
 };
 
 declare global {
@@ -55,14 +55,14 @@ export default function HomePage() {
   const [bonusPoints, setBonusPoints] = useState(0);
   const [profileComplete, setProfileComplete] = useState(false);
   const [stepsToday, setStepsToday] = useState(0);
-  const [manualSteps, setManualSteps] = useState(0);
+  const [manualSteps, setManualSteps] = useState("");
   const [status, setStatus] = useState("");
   const [promoCodes, setPromoCodes] = useState<PromoCode[]>([]);
   const [profileForm, setProfileForm] = useState<ProfileForm>({
     gender: "",
-    height_cm: 170,
-    weight_kg: 70,
-    birth_year: 1995
+    height_cm: "",
+    weight_kg: "",
+    birth_year: ""
   });
   const [isTelegram, setIsTelegram] = useState(false);
   const [syncPeriod, setSyncPeriod] = useState<"today" | "7d" | "30d">("today");
@@ -92,9 +92,9 @@ export default function HomePage() {
         setProfileForm(prev => ({
           ...prev,
           gender: json.profile.gender ?? prev.gender,
-          height_cm: json.profile.height_cm ?? prev.height_cm,
-          weight_kg: json.profile.weight_kg ?? prev.weight_kg,
-          birth_year: json.profile.birth_year ?? prev.birth_year
+          height_cm: json.profile.height_cm != null ? String(json.profile.height_cm) : prev.height_cm,
+          weight_kg: json.profile.weight_kg != null ? String(json.profile.weight_kg) : prev.weight_kg,
+          birth_year: json.profile.birth_year != null ? String(json.profile.birth_year) : prev.birth_year
         }));
       }
     }
@@ -165,7 +165,12 @@ export default function HomePage() {
     const res = await fetch("/api/profile", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(profileForm)
+      body: JSON.stringify({
+        gender: profileForm.gender,
+        height_cm: Number(profileForm.height_cm),
+        weight_kg: Number(profileForm.weight_kg),
+        birth_year: Number(profileForm.birth_year)
+      })
     });
     if (res.ok) {
       setStatus("Профиль сохранён");
@@ -180,12 +185,12 @@ export default function HomePage() {
     const res = await fetch("/api/steps", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source: "manual", stepCount: manualSteps })
+      body: JSON.stringify({ source: "manual", stepCount: Number(manualSteps) || 0 })
     });
     if (res.ok) {
       const json = await res.json();
       setStatus(json.newPoints > 0 ? `Шаги сохранены! +${json.newPoints} бонусов` : "Шаги сохранены");
-      setManualSteps(0);
+      setManualSteps("");
       fetchProfile();
     } else {
       setStatus("Не удалось записать шаги");
@@ -285,7 +290,7 @@ export default function HomePage() {
                 <input
                   type="number"
                   value={profileForm.height_cm}
-                  onChange={e => setProfileForm(prev => ({ ...prev, height_cm: Number(e.target.value) }))}
+                  onChange={e => setProfileForm(prev => ({ ...prev, height_cm: e.target.value }))}
                   className="w-full rounded-2xl border px-3 py-2"
                 />
               </label>
@@ -294,7 +299,7 @@ export default function HomePage() {
                 <input
                   type="number"
                   value={profileForm.weight_kg}
-                  onChange={e => setProfileForm(prev => ({ ...prev, weight_kg: Number(e.target.value) }))}
+                  onChange={e => setProfileForm(prev => ({ ...prev, weight_kg: e.target.value }))}
                   className="w-full rounded-2xl border px-3 py-2"
                 />
               </label>
@@ -303,7 +308,7 @@ export default function HomePage() {
                 <input
                   type="number"
                   value={profileForm.birth_year}
-                  onChange={e => setProfileForm(prev => ({ ...prev, birth_year: Number(e.target.value) }))}
+                  onChange={e => setProfileForm(prev => ({ ...prev, birth_year: e.target.value }))}
                   className="w-full rounded-2xl border px-3 py-2"
                 />
               </label>
@@ -356,7 +361,7 @@ export default function HomePage() {
                         <input
                           type="number"
                           value={profileForm.height_cm}
-                          onChange={e => setProfileForm(prev => ({ ...prev, height_cm: Number(e.target.value) }))}
+                          onChange={e => setProfileForm(prev => ({ ...prev, height_cm: e.target.value }))}
                           className="w-full rounded-2xl border px-3 py-2"
                         />
                       </label>
@@ -365,7 +370,7 @@ export default function HomePage() {
                         <input
                           type="number"
                           value={profileForm.weight_kg}
-                          onChange={e => setProfileForm(prev => ({ ...prev, weight_kg: Number(e.target.value) }))}
+                          onChange={e => setProfileForm(prev => ({ ...prev, weight_kg: e.target.value }))}
                           className="w-full rounded-2xl border px-3 py-2"
                         />
                       </label>
@@ -374,7 +379,7 @@ export default function HomePage() {
                         <input
                           type="number"
                           value={profileForm.birth_year}
-                          onChange={e => setProfileForm(prev => ({ ...prev, birth_year: Number(e.target.value) }))}
+                          onChange={e => setProfileForm(prev => ({ ...prev, birth_year: e.target.value }))}
                           className="w-full rounded-2xl border px-3 py-2"
                         />
                       </label>
@@ -473,7 +478,7 @@ export default function HomePage() {
                     type="number"
                     min={0}
                     value={manualSteps}
-                    onChange={e => setManualSteps(Number(e.target.value))}
+                    onChange={e => setManualSteps(e.target.value)}
                     className="w-full rounded-2xl border px-3 py-2"
                   />
                 </label>
