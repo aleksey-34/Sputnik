@@ -12,7 +12,12 @@ export async function GET(request: NextRequest) {
   }
 
   const status = await getGoogleFitStatus(telegramId);
-  return NextResponse.json(status);
+  const googleConfigured = Boolean(
+    process.env.GOOGLE_CLIENT_ID &&
+    process.env.GOOGLE_CLIENT_SECRET &&
+    process.env.GOOGLE_REDIRECT_URL
+  );
+  return NextResponse.json({ ...status, googleConfigured });
 }
 
 export async function POST(request: NextRequest) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { GoogleFitUserGuide } from "@/components/GoogleFitUserGuide";
 
 type UserProfile = {
   id: number;
@@ -66,6 +67,7 @@ export default function HomePage() {
   const [isTelegram, setIsTelegram] = useState(false);
   const [syncPeriod, setSyncPeriod] = useState<"today" | "7d" | "30d">("today");
   const [googleConnected, setGoogleConnected] = useState(false);
+  const [googleConfigured, setGoogleConfigured] = useState(true);
   const [lastSync, setLastSync] = useState<{ at: string; period: string; steps: number; bonus: number } | null>(null);
 
   const fetchSyncStatus = useCallback(async () => {
@@ -73,6 +75,7 @@ export default function HomePage() {
     if (res.ok) {
       const json = await res.json();
       setGoogleConnected(Boolean(json.connected));
+      setGoogleConfigured(json.googleConfigured !== false);
       setLastSync(json.lastSync ?? null);
     }
   }, []);
@@ -308,6 +311,9 @@ export default function HomePage() {
             <button className="mt-4 rounded-2xl bg-primary px-4 py-2 text-white" onClick={saveProfile}>
               Сохранить профиль
             </button>
+            <p className="mt-4 text-sm text-slate-600">
+              После сохранения профиля подключите шаги с телефона — см. блок «Трекер шагов» ниже.
+            </p>
           </section>
         )}
 
@@ -407,35 +413,50 @@ export default function HomePage() {
 
             <div className="mb-4 rounded-2xl bg-slate-50 p-4">
               <h3 className="mb-2 font-medium">Синхронизация со смартфона</h3>
-              <p className="mb-3 text-sm text-slate-600">
-                Через Google Fit (Android). Шаги подтягиваются автоматически с телефона — каждая синхронизация сохраняется в журнале как пруф.
-              </p>
-              {googleConnected ? (
-                <p className="mb-3 text-sm text-green-700">Google Fit подключён</p>
-              ) : (
-                <button className="mb-3 rounded-2xl bg-primary px-4 py-2 text-white" onClick={connectGoogleFit}>
-                  1. Подключить Google Fit
-                </button>
+
+              {!googleConfigured && (
+                <p className="mb-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+                  Автосинхронизация временно недоступна (администратор ещё не подключил Google Fit к приложению).
+                  Пока используйте ручной ввод шагов ниже.
+                </p>
               )}
-              <label className="mb-3 block space-y-1 text-sm text-slate-700">
-                Период синхронизации
-                <select
-                  value={syncPeriod}
-                  onChange={e => setSyncPeriod(e.target.value as "today" | "7d" | "30d")}
-                  className="w-full rounded-2xl border px-3 py-2"
-                >
-                  <option value="today">Сегодня</option>
-                  <option value="7d">Последние 7 дней</option>
-                  <option value="30d">Последние 30 дней</option>
-                </select>
-              </label>
-              <button
-                className="w-full rounded-2xl bg-slate-900 px-4 py-2 text-white disabled:opacity-50"
-                onClick={syncStepsFromPhone}
-                disabled={!googleConnected}
-              >
-                2. Синхронизировать шаги
-              </button>
+
+              {googleConfigured && (
+                <>
+                  <p className="mb-3 text-sm text-slate-600">
+                    Нажмите «Подключить Google Fit» → войдите в <strong>свой</strong> Google-аккаунт → разрешите доступ к шагам.
+                    Это займёт 1–2 минуты. Подробная инструкция — ниже.
+                  </p>
+                  {googleConnected ? (
+                    <p className="mb-3 text-sm text-green-700">✓ Google Fit подключён — можно синхронизировать</p>
+                  ) : (
+                    <button className="mb-3 w-full rounded-2xl bg-primary px-4 py-2 text-white" onClick={connectGoogleFit}>
+                      1. Подключить Google Fit
+                    </button>
+                  )}
+                  <label className="mb-3 block space-y-1 text-sm text-slate-700">
+                    Период синхронизации
+                    <select
+                      value={syncPeriod}
+                      onChange={e => setSyncPeriod(e.target.value as "today" | "7d" | "30d")}
+                      className="w-full rounded-2xl border px-3 py-2"
+                    >
+                      <option value="today">Сегодня</option>
+                      <option value="7d">Последние 7 дней</option>
+                      <option value="30d">Последние 30 дней</option>
+                    </select>
+                  </label>
+                  <button
+                    className="w-full rounded-2xl bg-slate-900 px-4 py-2 text-white disabled:opacity-50"
+                    onClick={syncStepsFromPhone}
+                    disabled={!googleConnected}
+                  >
+                    2. Синхронизировать шаги
+                  </button>
+                </>
+              )}
+
+              <GoogleFitUserGuide />
               {lastSync && (
                 <p className="mt-3 text-xs text-slate-500">
                   Последняя синхронизация: {new Date(lastSync.at).toLocaleString("ru-RU")} — {formatSteps(lastSync.steps)} шагов
