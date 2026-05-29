@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/drizzle";
 import { bonus_transactions, promo_codes, promo_redemptions, users } from "@/lib/db/schema";
-import { getVerifiedSteps } from "@/lib/server/steps";
 import { and, eq, sql } from "drizzle-orm";
 
 function getTelegramId(request: NextRequest) {
@@ -38,23 +37,18 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const verifiedSteps = await getVerifiedSteps(user.id);
-  if (promo.required_steps > 0 && verifiedSteps < promo.required_steps) {
-    return NextResponse.json({
-      error: "INSUFFICIENT_STEPS",
-      verifiedSteps,
-      requiredSteps: promo.required_steps,
-      message: `Нужно ${promo.required_steps.toLocaleString("ru-RU")} верифицированных шагов (Google Fit). У вас: ${verifiedSteps.toLocaleString("ru-RU")}`
-    }, { status: 400 });
-  }
-
   const balanceResult = await db.select({ points: sql<number>`coalesce(sum(points), 0)` })
     .from(bonus_transactions)
     .where(eq(bonus_transactions.user_id, user.id));
   const balance = Number(balanceResult[0]?.points ?? 0);
 
   if (balance < promo.cost_points) {
-    return new NextResponse("Недостаточно бонусов", { status: 400 });
+    return NextResponse.json({
+      error: "INSUFFICIENT_BONUS",
+      balance,
+      cost: promo.cost_points,
+      message: `Нужно ${promo.cost_points} бонусов. У вас: ${balance}`
+    }, { status: 400 });
   }
 
   await db.insert(promo_redemptions).values({ user_id: user.id, promo_code_id: promo.id });
@@ -93,13 +87,12 @@ export async function POST(request: NextRequest) {
     title: promo.title,
     kind: promo.kind,
     partner_name: promo.partner_name,
-    discount_percent: promo.discount_percent,
     user_discount_percent: userDiscount,
     cost_points: promo.cost_points,
     reward_points: rewardGranted,
     newBalance: Number(newBalanceResult[0]?.points ?? 0),
     message: promo.kind === "partner"
-      ? `Активировано! Скидка ${userDiscount}% в «${promo.partner_name ?? "партнёре"}». Покажите код: ${promo.code}`
-      : `Активировано! Ваш код: ${promo.code}${rewardGranted > 0 ? `. +${rewardGranted} бонусов` : ""}`
+      ? `Активировано за ${promo.cost_points} бонусов! Скидка ${userDiscount}% в «${promo.partner_name ?? "партнёре"}». Код: ${promo.code}`
+      : `Активировано за ${promo.cost_points} бонусов! Код: ${promo.code}${rewardGranted > 0 ? `. +${rewardGranted} бонусов` : ""}`
   });
 }

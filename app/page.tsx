@@ -246,11 +246,9 @@ export default function HomePage() {
     </div>
   );
 
-  const promoCard = (code: PromoCode, mode: "shop" | "showcase") => {
+  const promoCard = (code: PromoCode) => {
     const isRedeemed = redeemedIds.has(code.id);
-    const needsSteps = code.required_steps > 0;
-    const stepsOk = verifiedSteps >= code.required_steps;
-    const progress = needsSteps ? Math.min(100, Math.round((verifiedSteps / code.required_steps) * 100)) : 100;
+    const canAfford = bonusPoints >= code.cost_points;
 
     return (
       <div key={code.id} className={`rounded-3xl border p-4 ${isRedeemed ? "border-green-300 bg-green-50" : "border-slate-200 bg-white"}`}>
@@ -259,43 +257,35 @@ export default function HomePage() {
             <p className="font-semibold">{code.title}</p>
             {code.partner_name && <p className="text-sm text-primary">Партнёр: {code.partner_name}</p>}
             <p className="text-sm text-slate-500">{code.description}</p>
-            {mode === "showcase" && code.user_cashback_percent > 0 && (
+            {code.user_cashback_percent > 0 && (
               <p className="mt-1 text-sm font-medium text-slate-700">
-                Скидка для вас: {code.user_cashback_percent}%
+                Скидка: {code.user_cashback_percent}%
               </p>
-            )}
-            {needsSteps && !isRedeemed && (
-              <div className="mt-2">
-                <p className="text-xs text-slate-500">
-                  Шаги (Google Fit): {formatSteps(verifiedSteps)} / {formatSteps(code.required_steps)}
-                </p>
-                <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-200">
-                  <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
-                </div>
-              </div>
             )}
           </div>
           {isRedeemed ? (
             <span className="rounded-full bg-green-200 px-3 py-1 text-xs font-medium text-green-900">✓ Активировано</span>
           ) : code.cost_points > 0 ? (
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-sm">{code.cost_points} бонусов</span>
-          ) : needsSteps ? (
-            <span className="rounded-full bg-blue-100 px-3 py-1 text-xs text-blue-800">за шаги</span>
-          ) : null}
+            <span className={`rounded-full px-3 py-1 text-sm ${canAfford ? "bg-slate-100" : "bg-red-100 text-red-800"}`}>
+              {code.cost_points} бонусов
+            </span>
+          ) : (
+            <span className="rounded-full bg-green-100 px-3 py-1 text-xs text-green-800">бесплатно</span>
+          )}
         </div>
         {isRedeemed ? (
           <div className="mt-3 rounded-2xl bg-white p-3 font-mono text-sm">{code.code}</div>
         ) : (
           <button
             className="mt-4 w-full rounded-2xl bg-primary px-4 py-2 text-white disabled:opacity-50"
-            disabled={!code.active || bonusPoints < code.cost_points || (needsSteps && !stepsOk)}
+            disabled={!code.active || !canAfford}
             onClick={() => redeemPromo(code.id)}
           >
-            {needsSteps && !stepsOk
-              ? `Ещё ${formatSteps(code.required_steps - verifiedSteps)} шагов`
+            {!canAfford && code.cost_points > 0
+              ? `Нужно ещё ${code.cost_points - bonusPoints} бонусов`
               : code.cost_points > 0
                 ? `Активировать за ${code.cost_points} бонусов`
-                : "Получить скидку"}
+                : "Получить бесплатно"}
           </button>
         )}
       </div>
@@ -423,14 +413,14 @@ export default function HomePage() {
       {tab === "shop" && (
         <div className="space-y-4">
           <p className="text-sm text-slate-600">Обменивайте бонусы на промокоды и награды</p>
-          {shopPromos.length === 0 ? <p className="text-slate-500">Пока пусто</p> : shopPromos.map(p => promoCard(p, "shop"))}
+          {shopPromos.length === 0 ? <p className="text-slate-500">Пока пусто</p> : shopPromos.map(p => promoCard(p))}
         </div>
       )}
 
       {tab === "showcase" && (
         <div className="space-y-4">
-          <p className="text-sm text-slate-600">Партнёрские акции открываются за верифицированные шаги (Google Fit)</p>
-          {showcasePromos.length === 0 ? <p className="text-slate-500">Скоро появятся акции</p> : showcasePromos.map(p => promoCard(p, "showcase"))}
+          <p className="text-sm text-slate-600">Партнёрские акции и квесты — оплата бонусами, как в магазине</p>
+          {showcasePromos.length === 0 ? <p className="text-slate-500">Скоро появятся акции</p> : showcasePromos.map(p => promoCard(p))}
         </div>
       )}
 
