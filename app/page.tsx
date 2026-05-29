@@ -62,18 +62,6 @@ type AppConfig = {
 
 type ProfileForm = { gender: string; height_cm: string; weight_kg: string; birth_year: string };
 
-declare global {
-  interface Window {
-    Telegram?: {
-      WebApp?: {
-        initData: string;
-        ready: () => void;
-        expand: () => void;
-      };
-    };
-  }
-}
-
 const formatSteps = (n: number) => new Intl.NumberFormat("ru-RU").format(n);
 const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? "WeGoWithSputnik_bot";
 
@@ -167,7 +155,17 @@ export default function HomePage() {
 
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
-    if (tg?.initData) { setIsTelegram(true); tg.ready(); tg.expand(); loginWithTelegram(); }
+    if (tg?.initData) {
+      const params = new URLSearchParams(tg.initData);
+      if (params.get("start_param") === "partner") {
+        window.location.replace("/partner");
+        return;
+      }
+      setIsTelegram(true);
+      tg.ready();
+      tg.expand();
+      loginWithTelegram();
+    }
     fetchConfig(); fetchPromos(); fetchSyncStatus();
   }, [fetchConfig, fetchPromos, fetchSyncStatus, loginWithTelegram]);
 

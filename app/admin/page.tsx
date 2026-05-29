@@ -98,7 +98,8 @@ export default function AdminPage() {
   const [settlements, setSettlements] = useState<Array<{
     id: number; partner_name: string; user_name: string; user_discount_percent: number;
     platform_fee_percent: number; total_margin_percent: number; cost_points: number;
-    status: string; confirmed_at: string;
+    bill_amount_rub: number; discount_amount_rub: number; platform_fee_amount_rub: number;
+    client_pays_rub: number; status: string; confirmed_at: string;
   }>>([]);
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [status, setStatus] = useState("");
@@ -601,7 +602,7 @@ export default function AdminPage() {
       {tab === "settlements" && (
         <div className="overflow-x-auto rounded-3xl border bg-white">
           <p className="border-b p-4 text-sm text-slate-500">
-            Подтверждённые ваучеры: долг партнёра = скидка клиенту + комиссия платформы (% от чека — учёт позже)
+            Партнёрский Mini App: <code className="text-xs">https://t.me/WeGoWithSputnik_bot?startapp=partner</code>
           </p>
           <table className="w-full text-left text-sm">
             <thead className="border-b bg-slate-50">
@@ -609,9 +610,10 @@ export default function AdminPage() {
                 <th className="p-3">Дата</th>
                 <th className="p-3">Партнёр</th>
                 <th className="p-3">Клиент</th>
-                <th className="p-3">Скидка</th>
-                <th className="p-3">Платформа</th>
-                <th className="p-3">Бонусов</th>
+                <th className="p-3">Чек</th>
+                <th className="p-3">Скидка ₽</th>
+                <th className="p-3">К оплате</th>
+                <th className="p-3">Платформе ₽</th>
                 <th className="p-3">Статус</th>
               </tr>
             </thead>
@@ -621,9 +623,10 @@ export default function AdminPage() {
                   <td className="p-3 whitespace-nowrap">{new Date(s.confirmed_at).toLocaleString("ru-RU")}</td>
                   <td className="p-3">{s.partner_name}</td>
                   <td className="p-3">{s.user_name}</td>
-                  <td className="p-3">{s.user_discount_percent}%</td>
-                  <td className="p-3">{s.platform_fee_percent}%</td>
-                  <td className="p-3">{s.cost_points}</td>
+                  <td className="p-3">{s.bill_amount_rub?.toLocaleString("ru-RU")} ₽</td>
+                  <td className="p-3">{s.discount_amount_rub?.toLocaleString("ru-RU")} ₽ ({s.user_discount_percent}%)</td>
+                  <td className="p-3">{s.client_pays_rub?.toLocaleString("ru-RU")} ₽</td>
+                  <td className="p-3">{s.platform_fee_amount_rub?.toLocaleString("ru-RU")} ₽</td>
                   <td className="p-3">{s.status}</td>
                 </tr>
               ))}

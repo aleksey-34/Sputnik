@@ -86,6 +86,10 @@ export const partner_settlements = pgTable("partner_settlements", {
   user_discount_percent: integer("user_discount_percent").notNull().default(0),
   platform_fee_percent: integer("platform_fee_percent").notNull().default(0),
   total_margin_percent: integer("total_margin_percent").notNull().default(0),
+  bill_amount_rub: integer("bill_amount_rub").notNull().default(0),
+  discount_amount_rub: integer("discount_amount_rub").notNull().default(0),
+  platform_fee_amount_rub: integer("platform_fee_amount_rub").notNull().default(0),
+  client_pays_rub: integer("client_pays_rub").notNull().default(0),
   status: varchar("status", { length: 16 }).notNull().default("pending"),
   confirmed_at: timestamp("confirmed_at").defaultNow().notNull(),
   meta: jsonb("meta")

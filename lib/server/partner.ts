@@ -1,5 +1,6 @@
 import { db } from "@/lib/drizzle";
 import { partner_settlements, promo_codes, promo_redemptions, users } from "@/lib/db/schema";
+import { calcSettlementAmounts } from "@/lib/utils/money";
 import { eq, sql } from "drizzle-orm";
 
 export async function lookupVoucher(token: string) {
@@ -20,7 +21,11 @@ export async function lookupVoucher(token: string) {
   return { ...row, expired };
 }
 
-export async function confirmPartnerVoucher(token: string, pin: string) {
+export async function confirmPartnerVoucher(token: string, pin: string, billAmountRub: number) {
+  if (!Number.isFinite(billAmountRub) || billAmountRub <= 0) {
+    throw new Error("INVALID_BILL");
+  }
+
   const lookup = await lookupVoucher(token);
   if (!lookup) {
     throw new Error("VOUCHER_NOT_FOUND");
@@ -41,6 +46,9 @@ export async function confirmPartnerVoucher(token: string, pin: string) {
   }
 
   const userName = [user.first_name, user.last_name].filter(Boolean).join(" ");
+  const userDiscount = redemption.user_discount_snapshot;
+  const platformFee = redemption.platform_fee_snapshot;
+  const amounts = calcSettlementAmounts(billAmountRub, userDiscount, platformFee);
 
   await db.update(promo_redemptions).set({
     status: "used",
@@ -53,17 +61,23 @@ export async function confirmPartnerVoucher(token: string, pin: string) {
     partner_name: promo.partner_name ?? promo.title,
     user_name: userName,
     cost_points: redemption.cost_points_snapshot,
-    user_discount_percent: redemption.user_discount_snapshot,
-    platform_fee_percent: redemption.platform_fee_snapshot,
+    user_discount_percent: userDiscount,
+    platform_fee_percent: platformFee,
     total_margin_percent: promo.discount_percent,
+    bill_amount_rub: billAmountRub,
+    discount_amount_rub: amounts.discountAmountRub,
+    platform_fee_amount_rub: amounts.platformFeeAmountRub,
+    client_pays_rub: amounts.clientPaysRub,
     status: "pending",
-    meta: { voucher_token: token, promo_code: promo.code }
+    meta: { voucher_token: token, promo_code: promo.code, bill_amount_rub: billAmountRub }
   });
 
   return {
     userName,
-    discountPercent: redemption.user_discount_snapshot,
+    discountPercent: userDiscount,
     partnerName: promo.partner_name ?? promo.title,
-    title: promo.title
+    title: promo.title,
+    billAmountRub,
+    ...amounts
   };
 }

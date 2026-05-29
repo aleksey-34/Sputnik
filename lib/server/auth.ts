@@ -13,6 +13,12 @@ export function buildReferralLink(telegramId: string) {
   return `https://t.me/${bot}?startapp=${telegramId}`;
 }
 
+/** Ссылка на партнёрский Mini App в Telegram */
+export function buildPartnerAppLink() {
+  const bot = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? "WeGoWithSputnik_bot";
+  return `https://t.me/${bot}?startapp=partner`;
+}
+
 export async function applyReferralIfEligible(inviteeId: number, startParam?: string) {
   if (!startParam?.trim()) return false;
 
