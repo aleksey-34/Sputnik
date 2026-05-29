@@ -1,0 +1,4 @@
+- [ ] Следуйте инструкции пользователя: создайте Telegram Mini App на Next.js 15 + TypeScript + Tailwind.
+- [ ] Убедитесь, что в проекте есть база PostgreSQL и Drizzle ORM.
+- [ ] Подготовьте рабочее приложение с API-эндпоинтами для Telegram auth, шагов, Google Fit и промокодов.
+- [ ] Обновите README и добавьте SQL инициализацию базы.
