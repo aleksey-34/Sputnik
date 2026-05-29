@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GoogleFitUserGuide } from "@/components/GoogleFitUserGuide";
 import { PartnerVoucherCard } from "@/components/PartnerVoucherCard";
+import { BrandLogo } from "@/components/BrandLogo";
 
 type Tab = "user" | "shop" | "showcase";
 
@@ -314,7 +315,7 @@ export default function HomePage() {
     const canAfford = bonusPoints >= code.cost_points;
 
     return (
-      <div key={code.id} className={`rounded-3xl border p-4 ${isRedeemed ? "border-green-300 bg-green-50" : "border-slate-200 bg-white"}`}>
+      <div key={code.id} className={`card-brand p-4 ${isRedeemed ? "border-accent/40 bg-accent-light/30" : ""}`}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="font-semibold">{code.title}</p>
@@ -354,7 +355,7 @@ export default function HomePage() {
           )
         ) : (
           <button
-            className="mt-4 w-full rounded-2xl bg-primary px-4 py-2 text-white disabled:opacity-50"
+            className="mt-4 w-full btn-accent disabled:opacity-50"
             disabled={!code.active || !canAfford}
             onClick={() => redeemPromo(code.id)}
           >
@@ -373,15 +374,15 @@ export default function HomePage() {
 
   return (
     <main className="container max-w-lg py-4 pb-24">
-      {/* Header */}
-      <header className="mb-4 rounded-3xl border bg-white p-5 shadow-sm">
-        <h1 className="text-2xl font-bold">Спутник</h1>
-        <p className="text-sm text-slate-600">{appConfig?.about.description ?? "Трекинг шагов и бонусы"}</p>
+      <header className="card-brand mb-4 p-5">
+        <BrandLogo size="sm" className="mb-3" />
         {profile && (
-          <p className="mt-2 text-lg">Баланс: <strong className="text-primary">{bonusPoints}</strong> бонусов</p>
+          <p className="text-center text-lg text-primary">
+            Баланс: <strong className="text-accent-dark">{bonusPoints}</strong> бонусов
+          </p>
         )}
         {appConfig && (
-          <ul className="mt-3 space-y-1 text-xs text-slate-500">
+          <ul className="mt-3 space-y-1 text-xs text-brand-muted">
             {appConfig.about.rules.map(r => <li key={r}>• {r}</li>)}
           </ul>
         )}
@@ -393,7 +394,7 @@ export default function HomePage() {
           <p className="mt-2 text-sm">{confirmPromo.message}</p>
           <div className="mt-4 flex gap-2">
             <button
-              className="flex-1 rounded-2xl bg-primary py-2 text-white"
+              className="flex-1 btn-accent"
               onClick={() => redeemPromo(confirmPromo.promoCodeId, true)}
             >
               Подтвердить (−{confirmPromo.cost_points} бон.)
@@ -419,7 +420,7 @@ export default function HomePage() {
       )}
 
       {activationBanner && !voucherBanner && (
-        <div className="mb-4 rounded-3xl border-2 border-green-400 bg-green-50 p-5">
+        <div className="mb-4 rounded-3xl border-2 border-accent/50 bg-accent-light p-5">
           <p className="font-semibold text-green-900">🎉 {activationBanner.title}</p>
           <p className="mt-2 font-mono text-lg">{activationBanner.code}</p>
           <p className="mt-2 text-sm text-green-800">{activationBanner.detail}</p>
@@ -428,7 +429,7 @@ export default function HomePage() {
       )}
 
       {!isTelegram && (
-        <p className="mb-4 rounded-2xl bg-amber-50 p-3 text-sm text-amber-900">Откройте через бота в Telegram</p>
+        <p className="mb-4 rounded-2xl bg-accent-light p-3 text-sm text-primary">Откройте через бота в Telegram</p>
       )}
 
       {/* Tab content */}
@@ -442,27 +443,26 @@ export default function HomePage() {
             <section className="rounded-3xl border border-blue-200 bg-blue-50 p-5">
               <h2 className="mb-3 font-semibold">Заполните профиль</h2>
               {profileFields}
-              <button className="mt-4 w-full rounded-2xl bg-primary py-2 text-white" onClick={saveProfile}>Сохранить</button>
+              <button className="mt-4 w-full btn-accent" onClick={saveProfile}>Сохранить</button>
             </section>
           )}
 
           {profile && profileComplete && (
-            <section className="rounded-3xl border bg-white p-5">
-              <h2 className="mb-2 font-semibold">{profile.first_name} {profile.last_name ?? ""}</h2>
+            <section className="card-brand p-5">
+              <h2 className="mb-2 font-semibold text-primary">{profile.first_name} {profile.last_name ?? ""}</h2>
               {profile.username && <p className="text-sm text-slate-500">@{profile.username}</p>}
               <div className="mt-4">{profileFields}</div>
-              <button className="mt-4 rounded-2xl bg-primary px-4 py-2 text-white" onClick={saveProfile}>Обновить</button>
+              <button className="mt-4 btn-primary" onClick={saveProfile}>Обновить</button>
             </section>
           )}
 
-          {/* Metrics — only after Google Fit connected */}
-          <section className="rounded-3xl border bg-white p-5">
-            <h2 className="mb-3 font-semibold">Метрики шагов</h2>
+          <section className="card-brand p-5">
+            <h2 className="mb-3 font-semibold text-primary">Метрики шагов</h2>
             {!googleConnected ? (
               <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
                 <p className="mb-3">Подключите Google Fit, чтобы видеть шаги и начислять бонусы автоматически.</p>
                 {googleConfigured && (
-                  <button className="w-full rounded-2xl bg-primary py-2 text-white" onClick={() => { window.location.href = "/api/google-fit/auth"; }}>
+                  <button className="w-full btn-accent py-2" onClick={() => { window.location.href = "/api/google-fit/auth"; }}>
                     Подключить Google Fit
                   </button>
                 )}
@@ -471,27 +471,27 @@ export default function HomePage() {
             ) : (
               <>
                 <p className="text-sm text-slate-500">Сегодня</p>
-                <p className="text-3xl font-bold text-primary">{formatSteps(stepsToday)} шагов</p>
+                <p className="text-3xl font-bold text-accent-dark">{formatSteps(stepsToday)} шагов</p>
                 <p className="text-xs text-slate-400">Верифицировано (Google Fit): {formatSteps(verifiedSteps)}</p>
                 {lastSync && <p className="mt-1 text-xs text-slate-400">Синхр.: {new Date(lastSync.at).toLocaleString("ru-RU")}</p>}
                 <p className="mt-2 text-xs text-slate-500">Считаются только шаги за сегодня, с даты регистрации в приложении.</p>
-                <button className="mt-4 w-full rounded-2xl bg-slate-900 py-2 text-white" onClick={syncSteps}>Синхронизировать шаги</button>
+                <button className="mt-4 w-full btn-primary py-2" onClick={syncSteps}>Синхронизировать шаги</button>
                 <GoogleFitUserGuide />
               </>
             )}
           </section>
 
-          <section className="rounded-3xl border bg-white p-5">
-            <h2 className="mb-2 font-semibold">Реферальная ссылка</h2>
+          <section className="card-brand p-5">
+            <h2 className="mb-2 font-semibold text-primary">Реферальная ссылка</h2>
             <p className="mb-2 text-sm text-slate-600">+{appConfig?.referralBonus ?? 10} бонусов за друга</p>
             <p className="mb-2 text-xs text-slate-400">Друг должен открыть ссылку — так приложение получит реферальный код</p>
             <div className="break-all rounded-2xl bg-slate-100 p-3 text-xs">{referralLink || "—"}</div>
-            {referralLink && <button className="mt-2 text-sm text-primary underline" onClick={() => navigator.clipboard.writeText(referralLink)}>Копировать</button>}
+            {referralLink && <button type="button" className="mt-2 text-sm text-accent-dark underline" onClick={() => navigator.clipboard.writeText(referralLink)}>Копировать</button>}
           </section>
 
           {redeemed.length > 0 && (
-            <section className="rounded-3xl border bg-white p-5">
-              <h2 className="mb-3 font-semibold">Мои акции и коды</h2>
+            <section className="card-brand p-5">
+              <h2 className="mb-3 font-semibold text-primary">Мои акции и коды</h2>
               <div className="space-y-2">
                 {redeemed.map(r => (
                   <div key={r.id} className="rounded-2xl bg-green-50 p-3">
@@ -545,13 +545,13 @@ export default function HomePage() {
       )}
 
       {/* Bottom tabs */}
-      <nav className="fixed bottom-0 left-0 right-0 border-t bg-white px-2 py-2 shadow-lg">
+      <nav className="fixed bottom-0 left-0 right-0 border-t border-primary/10 bg-white px-2 py-2 shadow-brand">
         <div className="container flex max-w-lg justify-around">
           {TABS.map(t => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`flex-1 rounded-2xl py-2 text-sm font-medium ${tab === t.id ? "bg-primary text-white" : "text-slate-600"}`}
+              className={`flex-1 rounded-2xl py-2.5 text-sm font-medium transition ${tab === t.id ? "bg-primary text-white shadow-brand" : "text-brand-muted"}`}
             >
               {t.label}
             </button>

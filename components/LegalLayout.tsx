@@ -12,8 +12,9 @@ export function LegalLayout({ title, children }: { title: string; children: Reac
     <main className="min-h-screen bg-slate-50">
       <header className="border-b bg-white">
         <div className="container flex flex-wrap items-center justify-between gap-4 py-4">
-          <Link href="/about" className="text-lg font-semibold text-primary">
-            Спутник
+          <Link href="/about" className="text-lg font-bold">
+            <span className="text-primary">Спутник</span>
+            <span className="text-accent"> — Шаги</span>
           </Link>
           <nav className="flex flex-wrap gap-4 text-sm text-slate-600">
             {LINKS.map(l => (
