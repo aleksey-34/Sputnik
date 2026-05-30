@@ -28,7 +28,7 @@ for f in scripts/db-migrate-v10.sql; do
   fi
 done
 
-npm ci --omit=dev 2>/dev/null || npm install
+npm ci 2>/dev/null || npm install
 npm run build
 bash scripts/pm2-restart.sh
 echo "✓ deploy done"

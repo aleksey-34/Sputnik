@@ -88,7 +88,7 @@ chmod 600 "$PROJECT_DIR/.env"
 
 echo "==> Зависимости и сборка..."
 cd "$PROJECT_DIR"
-npm ci --omit=dev 2>/dev/null || npm install
+npm ci 2>/dev/null || npm install
 
 echo "==> Миграции БД..."
 export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@localhost:5432/${DB_NAME}"
@@ -108,6 +108,16 @@ cd "$PROJECT_DIR"
 pm2 start npm --name sputnik -- start
 pm2 save
 pm2 startup systemd -u root --hp /root 2>/dev/null | tail -1 | bash || true
+
+echo "==> SSH keys для деплоя..."
+mkdir -p /root/.ssh
+chmod 700 /root/.ssh
+DEPLOY_PUBKEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOc/M87+CGrIQUhlbLyWCauEWid0J8L/k7abdUaqlU+A btdd-vps"
+DEV_PUBKEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBG/WSC9+6J7lAPcElKIKbu4wqIH7d+Xkiy/8Lu4Y4Yc aleksei-local-vps"
+touch /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+grep -qF "$DEPLOY_PUBKEY" /root/.ssh/authorized_keys 2>/dev/null || echo "$DEPLOY_PUBKEY" >> /root/.ssh/authorized_keys
+grep -qF "$DEV_PUBKEY" /root/.ssh/authorized_keys 2>/dev/null || echo "$DEV_PUBKEY" >> /root/.ssh/authorized_keys
 
 echo "==> Nginx..."
 CF_CERT="/etc/ssl/cloudflare/origin.pem"
@@ -167,15 +177,7 @@ nginx -t
 systemctl enable nginx
 systemctl restart nginx
 
-echo "==> SSH deploy key (для git pull + деплой с dev-машины)..."
-mkdir -p /root/.ssh
-chmod 700 /root/.ssh
-DEPLOY_PUBKEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOc/M87+CGrIQUhlbLyWCauEWid0J8L/k7abdUaqlU+A btdd-vps"
-DEV_PUBKEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBG/WSC9+6J7lAPcElKIKbu4wqIH7d+Xkiy/8Lu4Y4Yc aleksei-local-vps"
-touch /root/.ssh/authorized_keys
-chmod 600 /root/.ssh/authorized_keys
-grep -qF "$DEPLOY_PUBKEY" /root/.ssh/authorized_keys 2>/dev/null || echo "$DEPLOY_PUBKEY" >> /root/.ssh/authorized_keys
-grep -qF "$DEV_PUBKEY" /root/.ssh/authorized_keys 2>/dev/null || echo "$DEV_PUBKEY" >> /root/.ssh/authorized_keys
+echo "==> SSH deploy key (для git pull)..."
 if [[ ! -f /root/.ssh/id_ed25519 ]]; then
   ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519 -q
   echo "  Deploy key для GitHub (если нужен git pull по SSH):"
