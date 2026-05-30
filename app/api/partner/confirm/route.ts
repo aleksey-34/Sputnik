@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { confirmPartnerVoucher } from "@/lib/server/partner";
+import { logPartnerEvent } from "@/lib/server/partner-audit";
 
 const ERRORS: Record<string, { status: number; message: string }> = {
   VOUCHER_NOT_FOUND: { status: 404, message: "Ваучер не найден" },
@@ -28,6 +29,11 @@ export async function POST(request: NextRequest) {
     });
   } catch (e) {
     const code = e instanceof Error ? e.message : "UNKNOWN";
+    await logPartnerEvent({
+      event: "partner_confirm_error",
+      status: "error",
+      meta: { code, token: token.slice(0, 8), billAmountRub }
+    });
     const err = ERRORS[code];
     if (err) {
       return NextResponse.json({ error: code, message: err.message }, { status: err.status });

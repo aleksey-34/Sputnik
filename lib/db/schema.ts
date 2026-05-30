@@ -129,6 +129,19 @@ export const step_sync_logs = pgTable("step_sync_logs", {
   created_at: timestamp("created_at").defaultNow().notNull()
 });
 
+/** Журнал партнёрских событий: активация QR, скан, ошибки */
+export const partner_event_logs = pgTable("partner_event_logs", {
+  id: serial("id").primaryKey(),
+  event: varchar("event", { length: 64 }).notNull(),
+  user_id: integer("user_id").references(() => users.id),
+  redemption_id: integer("redemption_id"),
+  promo_code_id: integer("promo_code_id"),
+  partner_name: varchar("partner_name", { length: 128 }),
+  status: varchar("status", { length: 16 }).notNull().default("ok"),
+  meta: jsonb("meta"),
+  created_at: timestamp("created_at").defaultNow().notNull()
+});
+
 /** Глобальные настройки приложения (бонусы, рефералы и т.д.) */
 export const app_settings = pgTable("app_settings", {
   key: varchar("key", { length: 64 }).primaryKey(),

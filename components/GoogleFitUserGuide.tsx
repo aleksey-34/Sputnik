@@ -1,7 +1,9 @@
 "use client";
 
-const GOOGLE_FIT_IOS = "https://apps.apple.com/app/google-fit-activity-tracker/id1433864494";
-const GOOGLE_FIT_ANDROID = "https://play.google.com/store/apps/details?id=com.google.android.apps.fitness";
+import {
+  GOOGLE_FIT,
+  openExternalLink
+} from "@/lib/utils/google-fit-app";
 
 /** Пошаговая инструкция для пользователя — как подключить шаги с телефона */
 export function GoogleFitUserGuide() {
@@ -28,17 +30,15 @@ export function GoogleFitUserGuide() {
           <p className="mb-2 font-semibold text-slate-900">Шаг 1 — установите Google Fit</p>
           <div className="mb-3 flex flex-wrap gap-2">
             <a
-              href={GOOGLE_FIT_ANDROID}
-              target="_blank"
-              rel="noopener noreferrer"
+              href={GOOGLE_FIT.playStore}
+              onClick={e => { e.preventDefault(); openExternalLink(GOOGLE_FIT.playStore); }}
               className="rounded-full bg-primary px-4 py-2 text-sm text-white"
             >
               Android — Google Play
             </a>
             <a
-              href={GOOGLE_FIT_IOS}
-              target="_blank"
-              rel="noopener noreferrer"
+              href={GOOGLE_FIT.appStore}
+              onClick={e => { e.preventDefault(); openExternalLink(GOOGLE_FIT.appStore); }}
               className="rounded-full bg-slate-800 px-4 py-2 text-sm text-white"
             >
               iPhone — App Store
@@ -48,6 +48,10 @@ export function GoogleFitUserGuide() {
             <li>Установите Google Fit и войдите в <strong>свой</strong> Google-аккаунт</li>
             <li>Разрешите доступ к физической активности / Motion &amp; Fitness</li>
             <li>Пройдите 50–100 шагов — приложение начнёт считать</li>
+            <li>
+              <strong>Xiaomi / Redmi / POCO:</strong> шаги в «Здоровье» или Mi Fitness сами в Google не попадают —
+              нужно установить <strong>Google Fit</strong> и включить в нём синхронизацию шагов с телефона
+            </li>
             <li>
               <strong>iPhone:</strong> откройте Google Fit → убедитесь, что шаги отображаются внутри приложения
             </li>

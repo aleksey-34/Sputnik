@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GoogleFitUserGuide } from "@/components/GoogleFitUserGuide";
+import { GoogleFitConnectButton, GoogleFitOpenAppButton } from "@/components/GoogleFitConnectButton";
 import { PartnerVoucherCard } from "@/components/PartnerVoucherCard";
 import { BrandLogo } from "@/components/BrandLogo";
+import { copyText } from "@/lib/utils/clipboard";
 
 type Tab = "user" | "shop" | "showcase";
 
@@ -90,6 +92,7 @@ export default function HomePage() {
   const [voucherBanner, setVoucherBanner] = useState<VoucherBanner | null>(null);
   const [confirmPromo, setConfirmPromo] = useState<ConfirmPromo | null>(null);
   const [activationBanner, setActivationBanner] = useState<{ title: string; code: string; detail: string } | null>(null);
+  const [redeemingId, setRedeemingId] = useState<number | null>(null);
   const [isTelegram, setIsTelegram] = useState(false);
 
   const fetchConfig = useCallback(async () => {
@@ -157,13 +160,15 @@ export default function HomePage() {
     const tg = window.Telegram?.WebApp;
     if (tg?.initData) {
       const params = new URLSearchParams(tg.initData);
-      if (params.get("start_param") === "partner") {
+      const startParam = params.get("start_param") ?? tg.initDataUnsafe?.start_param;
+      if (startParam === "partner") {
         window.location.replace("/partner");
         return;
       }
       setIsTelegram(true);
       tg.ready();
       tg.expand();
+      tg.disableVerticalSwipes?.();
       loginWithTelegram();
     }
     fetchConfig(); fetchPromos(); fetchSyncStatus();
@@ -190,6 +195,17 @@ export default function HomePage() {
   const referralLink = useMemo(() =>
     profile ? `https://t.me/${BOT_USERNAME}?startapp=${profile.telegram_id}` : "", [profile]);
 
+  const copyReferralLink = async () => {
+    if (!referralLink) return;
+    const ok = await copyText(referralLink);
+    if (ok) {
+      setStatus("Ссылка скопирована");
+      window.Telegram?.WebApp?.showAlert?.("Ссылка скопирована");
+    } else {
+      setStatus("Не удалось скопировать — выделите ссылку вручную");
+    }
+  };
+
   const redeemedIds = useMemo(() => new Set(redeemed.map(r => r.id)), [redeemed]);
 
   const saveProfile = async () => {
@@ -215,7 +231,7 @@ export default function HomePage() {
     if (res.ok) {
       const json = await res.json();
       if (json.totalSteps === 0) {
-        setStatus("Синхронизация прошла, но шагов за сегодня в Google Fit пока нет. Пройдите 50–100 шагов и повторите.");
+        setStatus("Синхронизация прошла, но шагов в Google Fit пока нет. Установите Google Fit, пройдите 50–100 шагов и повторите.");
       } else {
         setStatus(`Синхронизировано ${formatSteps(json.totalSteps)} шагов${json.totalBonus > 0 ? `, +${json.totalBonus} бонусов` : ""}`);
       }
@@ -224,6 +240,7 @@ export default function HomePage() {
   };
 
   const redeemPromo = async (promoId: number, confirmed = false) => {
+    setRedeemingId(promoId);
     const res = await fetch("/api/promocodes/redeem", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -242,6 +259,7 @@ export default function HomePage() {
         partner_name: json.partner_name ? String(json.partner_name) : undefined,
         message: String(json.message)
       });
+      setRedeemingId(null);
       return;
     }
 
@@ -282,6 +300,7 @@ export default function HomePage() {
     } else {
       setStatus(String(json?.message ?? text));
     }
+    setRedeemingId(null);
   };
 
   const profileFields = (
@@ -353,17 +372,20 @@ export default function HomePage() {
           )
         ) : (
           <button
+            type="button"
             className="mt-4 w-full btn-accent disabled:opacity-50"
-            disabled={!code.active || !canAfford}
+            disabled={!code.active || !canAfford || redeemingId === code.id}
             onClick={() => redeemPromo(code.id)}
           >
-            {!canAfford && code.cost_points > 0
-              ? `Нужно ещё ${code.cost_points - bonusPoints} бонусов`
-              : code.kind === "partner" || code.kind === "quest"
-                ? `Активировать за ${code.cost_points} бонусов`
-                : code.cost_points > 0
+            {redeemingId === code.id
+              ? "Активация…"
+              : !canAfford && code.cost_points > 0
+                ? `Нужно ещё ${code.cost_points - bonusPoints} бонусов`
+                : code.kind === "partner" || code.kind === "quest"
                   ? `Активировать за ${code.cost_points} бонусов`
-                  : "Получить бесплатно"}
+                  : code.cost_points > 0
+                    ? `Активировать за ${code.cost_points} бонусов`
+                    : "Получить бесплатно"}
           </button>
         )}
       </div>
@@ -371,7 +393,7 @@ export default function HomePage() {
   };
 
   return (
-    <main className="container max-w-lg py-4 pb-24">
+    <main className="container max-w-lg py-4 pb-[calc(var(--app-nav-height)+env(safe-area-inset-bottom,0px)+3rem)]">
       <header className="card-brand mb-4 p-5">
         <BrandLogo size="sm" className="mb-3" />
         {profile && (
@@ -387,33 +409,39 @@ export default function HomePage() {
       </header>
 
       {confirmPromo && (
-        <div className="mb-4 rounded-3xl border-2 border-amber-300 bg-amber-50 p-5">
-          <p className="font-semibold">{confirmPromo.title}</p>
-          <p className="mt-2 text-sm">{confirmPromo.message}</p>
-          <div className="mt-4 flex gap-2">
-            <button
-              className="flex-1 btn-accent"
-              onClick={() => redeemPromo(confirmPromo.promoCodeId, true)}
-            >
-              Подтвердить (−{confirmPromo.cost_points} бон.)
-            </button>
-            <button className="rounded-2xl border px-4 py-2" onClick={() => setConfirmPromo(null)}>Отмена</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-sm rounded-3xl border-2 border-amber-300 bg-amber-50 p-5 shadow-xl">
+            <p className="font-semibold">{confirmPromo.title}</p>
+            <p className="mt-2 text-sm">{confirmPromo.message}</p>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                className="flex-1 btn-accent disabled:opacity-60"
+                disabled={redeemingId !== null}
+                onClick={() => redeemPromo(confirmPromo.promoCodeId, true)}
+              >
+                {redeemingId !== null ? "Списываем бонусы…" : `Подтвердить (−${confirmPromo.cost_points} бон.)`}
+              </button>
+              <button type="button" className="rounded-2xl border px-4 py-2" onClick={() => setConfirmPromo(null)}>Отмена</button>
+            </div>
           </div>
         </div>
       )}
 
       {voucherBanner && (
-        <div className="mb-4">
-          <PartnerVoucherCard
-            title={voucherBanner.title}
-            partnerName={voucherBanner.partnerName}
-            discountPercent={voucherBanner.discountPercent}
-            voucherUrl={voucherBanner.voucherUrl}
-            status={voucherBanner.status}
-            expiresAt={voucherBanner.expiresAt}
-            onClose={() => setVoucherBanner(null)}
-          />
-          <p className="mt-2 text-sm text-slate-600">{voucherBanner.detail}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[92vh] w-full max-w-sm overflow-y-auto">
+            <PartnerVoucherCard
+              title={voucherBanner.title}
+              partnerName={voucherBanner.partnerName}
+              discountPercent={voucherBanner.discountPercent}
+              voucherUrl={voucherBanner.voucherUrl}
+              status={voucherBanner.status}
+              expiresAt={voucherBanner.expiresAt}
+              onClose={() => setVoucherBanner(null)}
+            />
+            <p className="mt-2 rounded-2xl bg-white p-3 text-sm text-slate-700">{voucherBanner.detail}</p>
+          </div>
         </div>
       )}
 
@@ -460,10 +488,9 @@ export default function HomePage() {
               <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
                 <p className="mb-3">Подключите Google Fit, чтобы видеть шаги и начислять бонусы автоматически.</p>
                 {googleConfigured && (
-                  <button className="w-full btn-accent py-2" onClick={() => { window.location.href = "/api/google-fit/auth"; }}>
-                    Подключить Google Fit
-                  </button>
+                  <GoogleFitConnectButton onConnectOAuth={() => { window.location.href = "/api/google-fit/auth"; }} />
                 )}
+                <GoogleFitOpenAppButton className="mt-2 w-full rounded-2xl border border-primary py-2 text-sm text-primary" />
                 <GoogleFitUserGuide />
               </div>
             ) : (
@@ -474,6 +501,7 @@ export default function HomePage() {
                 {lastSync && <p className="mt-1 text-xs text-slate-400">Синхр.: {new Date(lastSync.at).toLocaleString("ru-RU")}</p>}
                 <p className="mt-2 text-xs text-slate-500">Считаются только шаги за сегодня, с даты регистрации в приложении.</p>
                 <button className="mt-4 w-full btn-primary py-2" onClick={syncSteps}>Синхронизировать шаги</button>
+                <GoogleFitOpenAppButton />
                 <GoogleFitUserGuide />
               </>
             )}
@@ -484,7 +512,7 @@ export default function HomePage() {
             <p className="mb-2 text-sm text-slate-600">+{appConfig?.referralBonus ?? 10} бонусов за друга</p>
             <p className="mb-2 text-xs text-slate-400">Друг должен открыть ссылку — так приложение получит реферальный код</p>
             <div className="break-all rounded-2xl bg-slate-100 p-3 text-xs">{referralLink || "—"}</div>
-            {referralLink && <button type="button" className="mt-2 text-sm text-accent-dark underline" onClick={() => navigator.clipboard.writeText(referralLink)}>Копировать</button>}
+            {referralLink && <button type="button" className="mt-2 text-sm text-accent-dark underline" onClick={copyReferralLink}>Копировать</button>}
           </section>
 
           {redeemed.length > 0 && (
@@ -528,6 +556,7 @@ export default function HomePage() {
         <div className="space-y-4">
           <p className="text-sm text-slate-600">Обменивайте бонусы на промокоды и награды</p>
           {shopPromos.length === 0 ? <p className="text-slate-500">Пока пусто</p> : shopPromos.map(p => promoCard(p))}
+          <div className="h-8" aria-hidden />
         </div>
       )}
 
@@ -535,6 +564,7 @@ export default function HomePage() {
         <div className="space-y-4">
           <p className="text-sm text-slate-600">Партнёрские акции и квесты — оплата бонусами, как в магазине</p>
           {showcasePromos.length === 0 ? <p className="text-slate-500">Скоро появятся акции</p> : showcasePromos.map(p => promoCard(p))}
+          <div className="h-8" aria-hidden />
         </div>
       )}
 
@@ -543,7 +573,7 @@ export default function HomePage() {
       )}
 
       {/* Bottom tabs */}
-      <nav className="fixed bottom-0 left-0 right-0 border-t border-primary/10 bg-white px-2 py-2 shadow-brand">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-primary/10 bg-white px-2 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-brand">
         <div className="container flex max-w-lg justify-around">
           {TABS.map(t => (
             <button

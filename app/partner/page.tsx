@@ -133,7 +133,7 @@ export default function PartnerPage() {
   };
 
   return (
-    <main className="container max-w-md py-4 pb-8">
+    <main className="container max-w-md py-4 pb-[calc(2rem+env(safe-area-inset-bottom,0px))]">
       <BrandLogo size="sm" className="mb-4" />
       <h1 className="mb-1 text-center text-lg font-bold text-primary">Кабинет партнёра</h1>
       <p className="mb-4 text-center text-xs text-brand-muted">

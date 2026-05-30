@@ -1,0 +1,63 @@
+# Экстренный деплой / перезапуск SSH с IP GitHub Actions (если ваш IP в fail2ban).
+# Настройка: Settings → Secrets → VPS_SSH_KEY (приватный ключ ~/.ssh/btdd_vps)
+name: VPS emergency
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Действие на сервере"
+        required: true
+        default: restart_sshd
+        type: choice
+        options:
+          - restart_sshd
+          - git_pull_deploy
+          - pm2_status
+          - all
+
+jobs:
+  ssh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH on VPS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: 176.57.184.98
+          username: root
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 15m
+          script: |
+            set -euo pipefail
+            case "${{ github.event.inputs.action }}" in
+              restart_sshd)
+                systemctl restart ssh || systemctl restart sshd
+                systemctl status ssh --no-pager || systemctl status sshd --no-pager
+                ;;
+              git_pull_deploy)
+                cd /opt/sputnik
+                git fetch origin && git reset --hard origin/main
+                source .env
+                for f in scripts/db-migrate-v10.sql; do
+                  [[ -f "$f" ]] && psql "$DATABASE_URL" -f "$f" || true
+                done
+                npm ci --omit=dev || npm install
+                npm run build
+                bash scripts/pm2-restart.sh
+                ;;
+              pm2_status)
+                pm2 list
+                curl -s -o /dev/null -w "app:%{http_code}\n" http://127.0.0.1:3000/api/config
+                ;;
+              all)
+                systemctl restart ssh || systemctl restart sshd
+                cd /opt/sputnik
+                git fetch origin && git reset --hard origin/main
+                source .env
+                psql "$DATABASE_URL" -f scripts/db-migrate-v10.sql || true
+                psql "$DATABASE_URL" -f scripts/revert-mak-test-activations.sql || true
+                npm ci --omit=dev || npm install
+                npm run build
+                bash scripts/pm2-restart.sh
+                ;;
+            esac

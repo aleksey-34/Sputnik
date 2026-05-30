@@ -4,6 +4,7 @@ import { db } from "@/lib/drizzle";
 import {
   bonus_transactions,
   google_fit_connections,
+  partner_settlements,
   promo_codes,
   promo_redemptions,
   referrals,
@@ -44,13 +45,23 @@ export async function GET(request: NextRequest, { params }: Params) {
   const redemptions = await db.select({
     id: promo_redemptions.id,
     redeemed_at: promo_redemptions.redeemed_at,
+    used_at: promo_redemptions.used_at,
+    status: promo_redemptions.status,
+    voucher_token: promo_redemptions.voucher_token,
+    cost_points: promo_redemptions.cost_points_snapshot,
+    user_discount_percent: promo_redemptions.user_discount_snapshot,
     code: promo_codes.code,
     title: promo_codes.title,
     kind: promo_codes.kind,
-    partner_name: promo_codes.partner_name
+    partner_name: promo_codes.partner_name,
+    bill_amount_rub: partner_settlements.bill_amount_rub,
+    discount_amount_rub: partner_settlements.discount_amount_rub,
+    client_pays_rub: partner_settlements.client_pays_rub,
+    platform_fee_amount_rub: partner_settlements.platform_fee_amount_rub
   })
     .from(promo_redemptions)
     .innerJoin(promo_codes, eq(promo_redemptions.promo_code_id, promo_codes.id))
+    .leftJoin(partner_settlements, eq(partner_settlements.redemption_id, promo_redemptions.id))
     .where(eq(promo_redemptions.user_id, userId))
     .orderBy(sql`${promo_redemptions.redeemed_at} DESC`);
 

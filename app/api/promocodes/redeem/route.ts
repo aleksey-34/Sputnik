@@ -3,6 +3,7 @@ import { db } from "@/lib/drizzle";
 import { bonus_transactions, promo_codes, promo_redemptions, users } from "@/lib/db/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { generateVoucherToken, isPartnerKind, partnerVoucherUrl, voucherExpiresAt } from "@/lib/server/voucher";
+import { logPartnerEvent } from "@/lib/server/partner-audit";
 
 function getTelegramId(request: NextRequest) {
   return request.cookies.get("sputnik_telegram_id")?.value ?? null;
@@ -119,6 +120,21 @@ export async function POST(request: NextRequest) {
   const userDiscount = promo.user_cashback_percent;
   const voucherUrl = voucherToken ? partnerVoucherUrl(voucherToken) : null;
 
+  await logPartnerEvent({
+    event: "promo_redeemed",
+    userId: user.id,
+    redemptionId: redemption.id,
+    promoCodeId: promo.id,
+    partnerName: promo.partner_name ?? undefined,
+    meta: {
+      code: promo.code,
+      kind: promo.kind,
+      cost_points: promo.cost_points,
+      voucher_token: voucherToken,
+      has_voucher: Boolean(voucherUrl)
+    }
+  });
+
   return NextResponse.json({
     success: true,
     code: promo.code,
@@ -135,6 +151,10 @@ export async function POST(request: NextRequest) {
     expires_at: expiresAt?.toISOString(),
     message: isPartnerKind(promo.kind)
       ? `Списано ${promo.cost_points} бонусов. Скидка ${userDiscount}% — покажите QR сотруднику «${promo.partner_name ?? "партнёра"}».`
-      : `Активировано!${rewardGranted > 0 ? ` +${rewardGranted} бонусов` : ""}`
+      : rewardGranted > 0
+        ? `Активировано! +${rewardGranted} бонусов. Код: ${promo.code}`
+        : promo.cost_points > 0
+          ? `Активировано! Списано ${promo.cost_points} бонусов. Код: ${promo.code}`
+          : `Активировано! Код: ${promo.code}`
   });
 }

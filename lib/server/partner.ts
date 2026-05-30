@@ -2,6 +2,7 @@ import { db } from "@/lib/drizzle";
 import { partner_settlements, promo_codes, promo_redemptions, users } from "@/lib/db/schema";
 import { calcSettlementAmounts } from "@/lib/utils/money";
 import { eq, sql } from "drizzle-orm";
+import { logPartnerEvent } from "@/lib/server/partner-audit";
 
 export async function lookupVoucher(token: string) {
   const row = await db.select({
@@ -70,6 +71,21 @@ export async function confirmPartnerVoucher(token: string, pin: string, billAmou
     client_pays_rub: amounts.clientPaysRub,
     status: "pending",
     meta: { voucher_token: token, promo_code: promo.code, bill_amount_rub: billAmountRub }
+  });
+
+  await logPartnerEvent({
+    event: "partner_confirmed",
+    userId: redemption.user_id,
+    redemptionId: redemption.id,
+    promoCodeId: promo.id,
+    partnerName: promo.partner_name ?? promo.title,
+    meta: {
+      bill_amount_rub: billAmountRub,
+      discount_amount_rub: amounts.discountAmountRub,
+      platform_fee_amount_rub: amounts.platformFeeAmountRub,
+      client_pays_rub: amounts.clientPaysRub,
+      voucher_token: token
+    }
   });
 
   return {

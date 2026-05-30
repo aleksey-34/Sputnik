@@ -24,7 +24,13 @@ type UserDetail = UserRow & {
   googleFitConnected: boolean;
   syncCount: number;
   lastSyncAt?: string;
-  redemptions: { id: number; redeemed_at: string; code: string; title: string; kind: string; partner_name?: string }[];
+  redemptions: {
+    id: number; redeemed_at: string; used_at?: string; status: string;
+    voucher_token?: string; cost_points: number; user_discount_percent: number;
+    code: string; title: string; kind: string; partner_name?: string;
+    bill_amount_rub?: number; discount_amount_rub?: number; client_pays_rub?: number;
+    platform_fee_amount_rub?: number;
+  }[];
   transactions: { id: number; points: number; type: string; source?: string; created_at: string; meta?: unknown }[];
   referralsSent: { id: number; first_name: string; username?: string; created_at: string }[];
   referredBy?: { id: number; first_name: string; username?: string } | null;
@@ -101,6 +107,20 @@ export default function AdminPage() {
     bill_amount_rub: number; discount_amount_rub: number; platform_fee_amount_rub: number;
     client_pays_rub: number; status: string; confirmed_at: string;
   }>>([]);
+  const [financeSummary, setFinanceSummary] = useState<{
+    totalActivations: number; activeVouchers: number; usedVouchers: number;
+    totalBillRub: number; totalDiscountRub: number; totalPlatformFeeRub: number;
+    totalClientPaysRub: number; totalBonusesSpent: number;
+  } | null>(null);
+  const [allRedemptions, setAllRedemptions] = useState<Array<{
+    id: number; redeemed_at: string; used_at?: string; status: string;
+    user_name: string; username?: string; promo_code: string; promo_title: string;
+    cost_points: number; bill_amount_rub?: number; discount_amount_rub?: number;
+    client_pays_rub?: number; platform_fee_amount_rub?: number;
+  }>>([]);
+  const [partnerEvents, setPartnerEvents] = useState<Array<{
+    id: number; event: string; status: string; partner_name?: string; created_at: string;
+  }>>([]);
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [status, setStatus] = useState("");
   const [newPromo, setNewPromo] = useState<PromoForm>(EMPTY_PROMO);
@@ -174,8 +194,17 @@ export default function AdminPage() {
       if (res.ok) setPromos(await res.json());
     }
     if (t === "settlements") {
-      const res = await fetch("/api/admin/settlements");
-      if (res.ok) setSettlements(await res.json());
+      const [finRes, setRes] = await Promise.all([
+        fetch("/api/admin/redemptions"),
+        fetch("/api/admin/settlements")
+      ]);
+      if (finRes.ok) {
+        const json = await finRes.json();
+        setFinanceSummary(json.summary);
+        setAllRedemptions(json.redemptions ?? []);
+        setPartnerEvents(json.recentEvents ?? []);
+      }
+      if (setRes.ok) setSettlements(await setRes.json());
     }
     if (t === "logs") {
       const res = await fetch("/api/admin/sync-logs");
@@ -501,14 +530,27 @@ export default function AdminPage() {
                 {userDetail.redemptions.length === 0 ? (
                   <p className="mb-4 text-sm text-slate-400">Нет активаций</p>
                 ) : (
-                  <ul className="mb-4 space-y-1 text-sm">
+                  <div className="mb-4 space-y-2">
                     {userDetail.redemptions.map(r => (
-                      <li key={r.id} className="flex justify-between gap-2">
-                        <span>{r.title} <span className="text-slate-400">({r.code})</span></span>
-                        <span className="shrink-0 text-slate-400">{new Date(r.redeemed_at).toLocaleDateString("ru-RU")}</span>
-                      </li>
+                      <div key={r.id} className="rounded-2xl border bg-slate-50 p-3 text-sm">
+                        <div className="flex justify-between gap-2">
+                          <span className="font-medium">{r.title} <span className="text-slate-400">({r.code})</span></span>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${r.status === "used" ? "bg-green-100 text-green-800" : r.status === "active" ? "bg-blue-100 text-blue-800" : "bg-slate-200"}`}>
+                            {r.status === "used" ? "использовано" : r.status === "active" ? "активен QR" : r.status}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Активация: {new Date(r.redeemed_at).toLocaleString("ru-RU")}
+                          {r.used_at ? ` · Визит: ${new Date(r.used_at).toLocaleString("ru-RU")}` : ""}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Списано {r.cost_points} бон.
+                          {r.user_discount_percent > 0 ? ` · скидка ${r.user_discount_percent}%` : ""}
+                          {r.bill_amount_rub ? ` · чек ${r.bill_amount_rub.toLocaleString("ru-RU")} ₽ → оплата ${r.client_pays_rub?.toLocaleString("ru-RU")} ₽` : ""}
+                        </p>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 )}
 
                 <h3 className="mb-2 font-medium">История бонусов</h3>
@@ -600,10 +642,64 @@ export default function AdminPage() {
       )}
 
       {tab === "settlements" && (
-        <div className="overflow-x-auto rounded-3xl border bg-white">
-          <p className="border-b p-4 text-sm text-slate-500">
-            Партнёрский Mini App: <code className="text-xs">https://t.me/WeGoWithSputnik_bot?startapp=partner</code>
-          </p>
+        <div className="space-y-6">
+          {financeSummary && (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                ["Активаций всего", String(financeSummary.totalActivations)],
+                ["QR активен", String(financeSummary.activeVouchers)],
+                ["Использовано у партнёра", String(financeSummary.usedVouchers)],
+                ["Бонусов списано", String(financeSummary.totalBonusesSpent)],
+                ["Сумма чеков ₽", financeSummary.totalBillRub.toLocaleString("ru-RU")],
+                ["Скидки клиентам ₽", financeSummary.totalDiscountRub.toLocaleString("ru-RU")],
+                ["К оплате клиентами ₽", financeSummary.totalClientPaysRub.toLocaleString("ru-RU")],
+                ["Комиссия платформе ₽", financeSummary.totalPlatformFeeRub.toLocaleString("ru-RU")]
+              ].map(([k, v]) => (
+                <div key={k} className="rounded-2xl border bg-white p-4">
+                  <p className="text-xs text-slate-500">{k}</p>
+                  <p className="text-lg font-semibold">{v}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="overflow-x-auto rounded-3xl border bg-white">
+            <p className="border-b p-4 font-medium">Все активации акций</p>
+            <table className="w-full text-left text-sm">
+              <thead className="border-b bg-slate-50">
+                <tr>
+                  <th className="p-3">Дата</th>
+                  <th className="p-3">Клиент</th>
+                  <th className="p-3">Акция</th>
+                  <th className="p-3">Статус</th>
+                  <th className="p-3">Бонусы</th>
+                  <th className="p-3">Чек ₽</th>
+                  <th className="p-3">Скидка ₽</th>
+                  <th className="p-3">К оплате ₽</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allRedemptions.map(r => (
+                  <tr key={r.id} className="border-b">
+                    <td className="p-3 whitespace-nowrap">{new Date(r.redeemed_at).toLocaleString("ru-RU")}</td>
+                    <td className="p-3">{r.user_name}{r.username ? ` @${r.username}` : ""}</td>
+                    <td className="p-3">{r.promo_title} <span className="text-slate-400">({r.promo_code})</span></td>
+                    <td className="p-3">{r.status === "used" ? "✓ у партнёра" : r.status === "active" ? "QR активен" : r.status}</td>
+                    <td className="p-3">{r.cost_points}</td>
+                    <td className="p-3">{r.bill_amount_rub ? `${r.bill_amount_rub.toLocaleString("ru-RU")}` : "—"}</td>
+                    <td className="p-3">{r.discount_amount_rub ? `${r.discount_amount_rub.toLocaleString("ru-RU")}` : "—"}</td>
+                    <td className="p-3">{r.client_pays_rub ? `${r.client_pays_rub.toLocaleString("ru-RU")}` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="overflow-x-auto rounded-3xl border bg-white">
+            <p className="border-b p-4 text-sm text-slate-500">
+              Подтверждённые визиты партнёров · Mini App:{" "}
+              <code className="text-xs">https://t.me/WeGoWithSputnik_bot?startapp=partner</code>
+            </p>
           <table className="w-full text-left text-sm">
             <thead className="border-b bg-slate-50">
               <tr>
@@ -633,6 +729,23 @@ export default function AdminPage() {
             </tbody>
           </table>
           {settlements.length === 0 && <p className="p-6 text-center text-slate-400">Пока нет подтверждённых визитов</p>}
+          </div>
+
+          {partnerEvents.length > 0 && (
+            <div className="rounded-3xl border bg-white p-4">
+              <h3 className="mb-3 font-medium">Журнал партнёрских событий</h3>
+              <ul className="max-h-64 space-y-1 overflow-y-auto text-xs text-slate-600">
+                {partnerEvents.map(e => (
+                  <li key={e.id} className="flex justify-between gap-2 border-b py-1">
+                    <span>{e.event}{e.partner_name ? ` · ${e.partner_name}` : ""}</span>
+                    <span className={e.status === "error" ? "text-red-600" : "text-slate-400"}>
+                      {new Date(e.created_at).toLocaleString("ru-RU")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 

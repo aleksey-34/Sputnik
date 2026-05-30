@@ -36,6 +36,32 @@
 
 ---
 
+## Шаг 2b. Кнопки «Основное приложение» и «Партнёр» в боте
+
+Menu Button в BotFather — только одна. Вторую кнопку даёт **webhook** бота: на `/start` и `/partner` бот присылает инлайн-клавиатуру.
+
+1. Убедитесь, что в `.env` на сервере задан `TELEGRAM_BOT_TOKEN` и `APP_URL=https://sputnik.battletoads.top`
+2. После деплоя зарегистрируйте webhook (на VPS):
+
+```bash
+source /opt/sputnik/.env
+curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d "{\"url\":\"https://sputnik.battletoads.top/api/telegram/webhook\",\"allowed_updates\":[\"message\"]}"
+```
+
+Токен — **без** `${}` вокруг самого значения. Неверно: `bot${8901039724:AAH...}` — верно: `bot${TELEGRAM_BOT_TOKEN}` после `source .env`.
+
+Если `curl` на VPS падает с `Killed` — выполните команду **с локального компьютера** (тот же URL и JSON).
+
+3. Проверка: напишите боту `/start` — должны появиться две кнопки:
+   - **Основное приложение** → Mini App
+   - **Партнёрский раздел** → `/partner`
+
+Партнёрам можно давать прямую ссылку: `https://t.me/WeGoWithSputnik_bot?startapp=partner`
+
+---
+
 ## Шаг 3. Настройте домен
 
 Mini App **обязательно** работает по HTTPS.
@@ -53,6 +79,10 @@ Mini App **обязательно** работает по HTTPS.
 2. Запустите деплой: `sudo bash scripts/vps-deploy.sh git@github.com:YOU/sputnik.git`
 3. Настройте nginx (`scripts/nginx-sputnik.conf`) + SSL через certbot
 4. URL: `https://your-domain.com`
+
+**Важно:** файл `/opt/sputnik/.env` не хранится в Git. При деплое используйте `git pull`, не `rsync --delete` — иначе `.env` можно случайно удалить.
+
+Перезапуск на VPS: `bash scripts/pm2-restart.sh` (убивает зависший процесс на порту 3000).
 
 ---
 
