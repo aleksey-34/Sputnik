@@ -167,12 +167,18 @@ nginx -t
 systemctl enable nginx
 systemctl restart nginx
 
-echo "==> SSH deploy key (для git pull)..."
+echo "==> SSH deploy key (для git pull + деплой с dev-машины)..."
 mkdir -p /root/.ssh
 chmod 700 /root/.ssh
+DEPLOY_PUBKEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOc/M87+CGrIQUhlbLyWCauEWid0J8L/k7abdUaqlU+A btdd-vps"
+DEV_PUBKEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBG/WSC9+6J7lAPcElKIKbu4wqIH7d+Xkiy/8Lu4Y4Yc aleksei-local-vps"
+touch /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+grep -qF "$DEPLOY_PUBKEY" /root/.ssh/authorized_keys 2>/dev/null || echo "$DEPLOY_PUBKEY" >> /root/.ssh/authorized_keys
+grep -qF "$DEV_PUBKEY" /root/.ssh/authorized_keys 2>/dev/null || echo "$DEV_PUBKEY" >> /root/.ssh/authorized_keys
 if [[ ! -f /root/.ssh/id_ed25519 ]]; then
   ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519 -q
-  echo "  Добавьте deploy key в GitHub:"
+  echo "  Deploy key для GitHub (если нужен git pull по SSH):"
   cat /root/.ssh/id_ed25519.pub
 fi
 
@@ -184,7 +190,8 @@ curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setChatMenuButton" \
   -H "Content-Type: application/json" \
   -d "{\"menu_button\":{\"type\":\"web_app\",\"text\":\"Открыть Спутник\",\"web_app\":{\"url\":\"${APP_URL}\"}}}" || true
 curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
-  -d "url=${APP_URL}/api/telegram/webhook" || true
+  -H "Content-Type: application/json" \
+  -d "{\"url\":\"${APP_URL}/api/telegram/webhook\",\"allowed_updates\":[\"message\"]}" || true
 
 sleep 3
 echo ""
